@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Card Simulator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- TOP NAV -->
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div class="brand-text">
+            <div class="brand-title">Card Simulator</div>
+            <div class="brand-subtitle">Blackjack first. More games later.</div>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="btn-home" class="btn btn-ghost" type="button" title="Home">
+            Home
+          </button>
+          <button id="btn-reset" class="btn btn-ghost" type="button" title="Reset">
+            Reset
+          </button>
+        </div>
+      </header>
+
+      <!-- SCREENS -->
+      <main class="main">
+        <!-- HOME -->
+        <section id="screen-home" class="screen is-active" aria-label="Home">
+          <div class="hero">
+            <h1 class="hero-title">A high-fidelity card table in your browser.</h1>
+            <p class="hero-copy">
+              Start with Blackjack. Choose whether you control the Player or the Dealer.
+              Smooth dealing, flips, bust effects, and a layout designed for future games.
+            </p>
+
+            <div class="hero-actions">
+              <button id="btn-start" class="btn btn-primary btn-xl" type="button">
+                Start
+              </button>
+            </div>
+
+            <div class="hero-footnote">
+              Static site. Works on GitHub Pages with no build step.
+            </div>
+          </div>
+        </section>
+
+        <!-- GAME SELECT -->
+        <section id="screen-select" class="screen" aria-label="Game selection">
+          <div class="select-layout">
+            <aside class="game-rail">
+              <div class="rail-title">Games</div>
+
+              <button id="tile-blackjack" class="game-tile is-enabled" type="button">
+                <div class="tile-card" aria-hidden="true">
+                  <div class="tile-card-inner">
+                    <div class="tile-card-front">
+                      <div class="tile-corner tl">A<span>♠</span></div>
+                      <div class="tile-suit">♠</div>
+                      <div class="tile-corner br">A<span>♠</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="tile-meta">
+                  <div class="tile-title">Blackjack</div>
+                  <div class="tile-subtitle">Control Player or Dealer</div>
+                </div>
+              </button>
+
+              <button class="game-tile is-disabled" type="button" disabled>
+                <div class="tile-card is-back" aria-hidden="true">
+                  <div class="tile-card-inner">
+                    <div class="tile-card-front">
+                      <div class="tile-suit subtle">?</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="tile-meta">
+                  <div class="tile-title">Coming soon</div>
+                  <div class="tile-subtitle">Reserved slot</div>
+                </div>
+              </button>
+            </aside>
+
+            <section class="select-stage">
+              <div class="stage-card">
+                <h2 class="stage-title">Select a game</h2>
+                <p class="stage-copy">
+                  Blackjack is available now. The right side of this layout is reserved for future
+                  games and richer modes (tutorials, rulesets, betting, multiplayer, etc.).
+                </p>
+
+                <div class="stage-placeholder">
+                  <div class="placeholder-grid">
+                    <div class="placeholder-box"></div>
+                    <div class="placeholder-box"></div>
+                    <div class="placeholder-box"></div>
+                    <div class="placeholder-box"></div>
+                  </div>
+                  <div class="placeholder-label">Future game space</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- BLACKJACK -->
+        <section id="screen-blackjack" class="screen" aria-label="Blackjack">
+          <div class="table-wrap">
+            <div class="table">
+              <div class="table-felt" aria-hidden="true"></div>
+
+              <!-- DEALER -->
+              <section class="seat seat-dealer">
+                <div class="seat-header">
+                  <div class="seat-title">
+                    Dealer
+                    <span id="dealer-role-pill" class="pill">CPU</span>
+                  </div>
+                  <div class="seat-score">
+                    <span class="muted">Total:</span>
+                    <span id="dealer-score">—</span>
+                  </div>
+                </div>
+                <div id="dealer-hand" class="hand" aria-label="Dealer hand"></div>
+              </section>
+
+              <!-- DECK -->
+              <div class="deck-area" aria-hidden="true">
+                <div id="deck" class="deck" title="Deck">
+                  <div class="deck-card"></div>
+                  <div class="deck-card"></div>
+                  <div class="deck-card"></div>
+                </div>
+              </div>
+
+              <!-- PLAYER -->
+              <section class="seat seat-player">
+                <div class="seat-header">
+                  <div class="seat-title">
+                    Player
+                    <span id="player-role-pill" class="pill">YOU</span>
+                  </div>
+                  <div class="seat-score">
+                    <span class="muted">Total:</span>
+                    <span id="player-score">—</span>
+                  </div>
+                </div>
+                <div id="player-hand" class="hand" aria-label="Player hand"></div>
+              </section>
+
+              <!-- CONTROLS -->
+              <section class="controls">
+                <div class="controls-left">
+                  <button id="btn-new-round" class="btn btn-primary" type="button">
+                    New round
+                  </button>
+                  <button id="btn-hit" class="btn" type="button">Hit</button>
+                  <button id="btn-stand" class="btn" type="button">Stand</button>
+                </div>
+
+                <div class="controls-right">
+                  <div id="status" class="status" role="status" aria-live="polite">
+                    Pick “New round” to begin.
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- ROLE PICKER MODAL -->
+          <div id="role-modal" class="modal is-hidden" role="dialog" aria-modal="true">
+            <div class="modal-scrim" data-close="true"></div>
+            <div class="modal-card">
+              <div class="modal-title">Blackjack setup</div>
+              <div class="modal-copy">
+                Choose which seat you control. The other seat uses a simple CPU policy.
+              </div>
+
+              <div class="modal-actions">
+                <button id="btn-control-player" class="btn btn-primary" type="button">
+                  Control Player
+                </button>
+                <button id="btn-control-dealer" class="btn" type="button">
+                  Control Dealer
+                </button>
+              </div>
+
+              <div class="modal-footnote">
+                Rules: single hand, standard values, dealer stands on soft 17. No betting yet.
+              </div>
+            </div>
+          </div>
+
+          <!-- ANIMATION LAYER -->
+          <div id="anim-layer" class="anim-layer" aria-hidden="true"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
