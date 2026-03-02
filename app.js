@@ -2,10 +2,17 @@
 
 /**
  * Card Simulator (static, GitHub Pages friendly)
- * Blackjack:
- * - You choose which seat you control: Player or Dealer
- * - Other seat uses a simple CPU policy
- * - Dealer stands on soft 17 (CPU mode). If you control Dealer, you can hit/stand manually.
+ * Blackjack + Betting:
+ * - Bankroll starts at 100,000
+ * - You bet on the seat you control (Player or Dealer)
+ * - Bet is placed via selectable chips, shown as a stacked pile
+ * - Bet locks when a round begins
+ *
+ * Payouts:
+ * - Normal win: +1x profit (bet returned + profit)
+ * - Blackjack win (natural 21 with 2 cards): +1.5x profit (3:2)
+ * - Push: bet returned
+ * - Loss: bet lost
  */
 
 const $ = (sel) => document.querySelector(sel);
@@ -41,6 +48,17 @@ const el = {
   btnControlDealer: $("#btn-control-dealer"),
   dealerRolePill: $("#dealer-role-pill"),
   playerRolePill: $("#player-role-pill"),
+  youControl: $("#you-control"),
+
+  // Betting UI
+  bankroll: $("#bankroll"),
+  betAmount: $("#bet-amount"),
+  betSpot: $("#bet-spot"),
+  betStack: $("#bet-stack"),
+  betHint: $("#bet-hint"),
+  chipSet: $("#chip-set"),
+  btnUndoChip: $("#btn-undo-chip"),
+  btnClearBet: $("#btn-clear-bet"),
 };
 
 function showScreen(name) {
@@ -54,6 +72,12 @@ function setStatus(msg) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function formatMoney(n) {
+  const sign = n < 0 ? "-" : "";
+  const x = Math.abs(n);
+  return `${sign}$${x.toLocaleString("en-US")}`;
 }
 
 /* --------------------------
@@ -115,6 +139,240 @@ function cardBaseValue(rank) {
 }
 
 /* --------------------------
+   Betting
+-------------------------- */
+
+const CHIP_DENOMS = [
+  { value: 25, label: "25", color: "#5ee6b2" },     // mint
+  { value: 100, label: "100", color: "#5eb6ff" },   // blue
+  { value: 500, label: "500", color: "#ff77ec" },   // pink
+  { value: 1000, label: "1K", color: "#ffd36b" },   // gold
+  { value: 5000, label: "5K", color: "#a78bfa" },   // purple
+  { value: 25000, label: "25K", color: "#ff5454" }, // red
+];
+
+function chipColorForValue(v) {
+  const found = CHIP_DENOMS.find((c) => c.value === v);
+  return found ? found.color : "#ffffff";
+}
+
+function chipLabelForValue(v) {
+  const found = CHIP_DENOMS.find((c) => c.value === v);
+  return found ? found.label : String(v);
+}
+
+function buildChipTray() {
+  el.chipSet.innerHTML = "";
+  for (const c of CHIP_DENOMS) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip";
+    chip.dataset.value = String(c.value);
+    chip.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), transparent 55%), ${c.color}`;
+    chip.title = `Chip ${formatMoney(c.value)}`;
+
+    const label = document.createElement("div");
+    label.className = "chip-label";
+    label.textContent = c.label;
+
+    chip.appendChild(label);
+
+    chip.addEventListener("click", () => {
+      if (BJ.betLocked) return;
+      selectChip(c.value);
+    });
+
+    el.chipSet.appendChild(chip);
+  }
+}
+
+function selectChip(value) {
+  BJ.selectedChip = value;
+  syncChipTraySelection();
+  syncBetHint();
+}
+
+function syncChipTraySelection() {
+  const nodes = Array.from(el.chipSet.querySelectorAll(".chip"));
+  for (const node of nodes) {
+    const v = Number(node.dataset.value);
+    node.classList.toggle("is-selected", v === BJ.selectedChip);
+    // disable chip if can't afford right now
+    const canAfford = BJ.bankroll >= v;
+    node.classList.toggle("is-disabled", !canAfford || BJ.betLocked);
+    node.disabled = !canAfford || BJ.betLocked;
+  }
+}
+
+function syncBetHint() {
+  if (BJ.betLocked) {
+    el.betHint.textContent = "Bet locked for this round.";
+    el.betSpot.classList.add("is-locked");
+    return;
+  }
+  el.betSpot.classList.remove("is-locked");
+
+  if (!BJ.selectedChip) {
+    el.betHint.textContent = "Select a chip, then click to add.";
+    return;
+  }
+  el.betHint.textContent = `Selected ${formatMoney(BJ.selectedChip)}. Click to add.`;
+}
+
+function addChipToBet(value) {
+  if (BJ.betLocked) return false;
+  if (value <= 0) return false;
+  if (BJ.bankroll < value) return false;
+
+  BJ.bankroll -= value;
+  BJ.betChips.push(value);
+  BJ.currentBet += value;
+
+  renderBetStack();
+  syncBankrollUI();
+  syncBetUI();
+  syncChipTraySelection();
+  return true;
+}
+
+function undoChip() {
+  if (BJ.betLocked) return;
+  const last = BJ.betChips.pop();
+  if (!last) return;
+
+  BJ.currentBet -= last;
+  BJ.bankroll += last;
+
+  renderBetStack();
+  syncBankrollUI();
+  syncBetUI();
+  syncChipTraySelection();
+}
+
+function clearBet() {
+  if (BJ.betLocked) return;
+  if (!BJ.betChips.length) return;
+
+  // refund all
+  for (const v of BJ.betChips) BJ.bankroll += v;
+  BJ.betChips = [];
+  BJ.currentBet = 0;
+
+  renderBetStack();
+  syncBankrollUI();
+  syncBetUI();
+  syncChipTraySelection();
+}
+
+function lockBet() {
+  BJ.betLocked = true;
+  syncChipTraySelection();
+  syncBetHint();
+  el.btnUndoChip.disabled = true;
+  el.btnClearBet.disabled = true;
+}
+
+function unlockBet() {
+  BJ.betLocked = false;
+  syncChipTraySelection();
+  syncBetHint();
+  el.btnUndoChip.disabled = false;
+  el.btnClearBet.disabled = false;
+}
+
+function renderBetStack() {
+  el.betStack.innerHTML = "";
+
+  // compress into groups so the stack doesn't get absurdly tall with small chips
+  // Strategy: show up to 24 chips. If more, merge small chips into larger units visually.
+  const chips = normalizeChipsForDisplay(BJ.betChips);
+
+  const maxShown = 24;
+  const shown = chips.slice(-maxShown); // show top stack
+  const baseY = 52; // baseline within stack container
+  const step = 4;   // vertical offset per chip
+
+  for (let i = 0; i < shown.length; i++) {
+    const v = shown[i];
+    const chip = document.createElement("div");
+    chip.className = "stack-chip";
+    chip.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), transparent 55%), ${chipColorForValue(v)}`;
+
+    const y = baseY - i * step;
+    chip.style.top = `${y}px`;
+
+    // small random sideways jitter for realism (deterministic-ish)
+    const jitter = ((i * 17) % 7) - 3; // [-3..3]
+    chip.style.left = `calc(50% + ${jitter}px)`;
+
+    // label only on top chip
+    if (i === shown.length - 1) {
+      const label = document.createElement("div");
+      label.className = "stack-chip-label";
+      label.textContent = chipLabelForValue(v);
+      chip.appendChild(label);
+      chip.classList.add("pop");
+    }
+
+    el.betStack.appendChild(chip);
+  }
+}
+
+function normalizeChipsForDisplay(chips) {
+  // This is visual only; does not affect actual bet accounting.
+  // Combine many small chips into larger denominations for display if stack is too big.
+  if (chips.length <= 28) return chips.slice();
+
+  const counts = new Map();
+  for (const v of chips) counts.set(v, (counts.get(v) || 0) + 1);
+
+  // greedily combine lower to higher when possible
+  const denoms = CHIP_DENOMS.map((d) => d.value).slice().sort((a, b) => a - b);
+
+  // helper to combine n of denom into next denom when exact ratio exists
+  // we use ratios based on value (e.g., 4x25=100, 5x100=500, 2x500=1000, 5x1000=5000, 5x5000=25000)
+  const ratioToNext = new Map([
+    [25, { next: 100, ratio: 4 }],
+    [100, { next: 500, ratio: 5 }],
+    [500, { next: 1000, ratio: 2 }],
+    [1000, { next: 5000, ratio: 5 }],
+    [5000, { next: 25000, ratio: 5 }],
+  ]);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const d of denoms) {
+      const rule = ratioToNext.get(d);
+      if (!rule) continue;
+      const c = counts.get(d) || 0;
+      if (c >= rule.ratio) {
+        const k = Math.floor(c / rule.ratio);
+        counts.set(d, c - k * rule.ratio);
+        counts.set(rule.next, (counts.get(rule.next) || 0) + k);
+        changed = true;
+      }
+    }
+  }
+
+  // expand back to list
+  const out = [];
+  for (const d of denoms) {
+    const c = counts.get(d) || 0;
+    for (let i = 0; i < c; i++) out.push(d);
+  }
+  return out;
+}
+
+function syncBankrollUI() {
+  el.bankroll.textContent = formatMoney(BJ.bankroll);
+}
+
+function syncBetUI() {
+  el.betAmount.textContent = formatMoney(BJ.currentBet);
+}
+
+/* --------------------------
    Blackjack state
 -------------------------- */
 
@@ -129,9 +387,16 @@ const BJ = {
 
   // if true, dealer's 2nd card is face-down (hidden from player)
   dealerHoleDown: true,
+
+  // Betting
+  bankroll: 100000,
+  currentBet: 0,
+  betChips: [],
+  selectedChip: null,
+  betLocked: false,
 };
 
-function resetBlackjackState() {
+function resetBlackjackState({ hard = false } = {}) {
   BJ.shoe = buildShoe(4);
   BJ.phase = "idle";
   BJ.uiBusy = false;
@@ -139,11 +404,29 @@ function resetBlackjackState() {
   BJ.dealer = [];
   BJ.dealerHoleDown = true;
 
+  // Betting reset (keep bankroll unless hard)
+  BJ.currentBet = 0;
+  BJ.betChips = [];
+  BJ.selectedChip = null;
+  BJ.betLocked = false;
+
+  if (hard) BJ.bankroll = 100000;
+
   clearHandsUI();
-  setStatus("Pick “New round” to begin.");
+  setStatus("Select chips and place a bet. Then click “New round”.");
   setButtonsEnabled({ newRound: true, hit: false, stand: false });
+
   updateRolePills();
   updateScoresUI();
+
+  buildChipTray();
+  renderBetStack();
+  syncBankrollUI();
+  syncBetUI();
+  syncChipTraySelection();
+  syncBetHint();
+  el.btnUndoChip.disabled = false;
+  el.btnClearBet.disabled = false;
 }
 
 function clearHandsUI() {
@@ -157,9 +440,11 @@ function updateRolePills() {
   if (BJ.controlled === "player") {
     el.playerRolePill.textContent = "YOU";
     el.dealerRolePill.textContent = "CPU";
+    el.youControl.textContent = "Player";
   } else {
     el.playerRolePill.textContent = "CPU";
     el.dealerRolePill.textContent = "YOU";
+    el.youControl.textContent = "Dealer";
   }
 }
 
@@ -350,16 +635,31 @@ function updateScoresUI() {
 }
 
 function markOutcomeUI(outcome) {
-  // outcome: "playerWin" | "dealerWin" | "push"
+  // outcome: "youWin" | "youLose" | "push"
   el.playerHand.classList.remove("win", "lose");
   el.dealerHand.classList.remove("win", "lose");
 
-  if (outcome === "playerWin") {
-    el.playerHand.classList.add("win");
-    el.dealerHand.classList.add("lose");
-  } else if (outcome === "dealerWin") {
-    el.playerHand.classList.add("lose");
-    el.dealerHand.classList.add("win");
+  const you = BJ.controlled;
+
+  if (outcome === "push") return;
+
+  if (you === "player") {
+    if (outcome === "youWin") {
+      el.playerHand.classList.add("win");
+      el.dealerHand.classList.add("lose");
+    } else {
+      el.playerHand.classList.add("lose");
+      el.dealerHand.classList.add("win");
+    }
+  } else {
+    // you === dealer
+    if (outcome === "youWin") {
+      el.dealerHand.classList.add("win");
+      el.playerHand.classList.add("lose");
+    } else {
+      el.dealerHand.classList.add("lose");
+      el.playerHand.classList.add("win");
+    }
   }
 }
 
@@ -394,7 +694,6 @@ async function dealToDealer({ faceDown = false } = {}) {
 }
 
 function revealDealerHoleIfNeeded() {
-  // Flip UI + state
   let revealed = false;
   for (let i = 0; i < BJ.dealer.length; i++) {
     const c = BJ.dealer[i];
@@ -412,9 +711,79 @@ function currentControlledSeat() {
   return BJ.controlled; // "player" | "dealer"
 }
 
+function youHand() {
+  return BJ.controlled === "player" ? BJ.player : BJ.dealer;
+}
+
+function oppHand() {
+  return BJ.controlled === "player" ? BJ.dealer : BJ.player;
+}
+
+function settleBet({ outcome, youBlackjack }) {
+  // outcome: "youWin" | "youLose" | "push"
+  // bet was already removed from bankroll when chips were added.
+  const bet = BJ.currentBet;
+
+  if (bet <= 0) return { net: 0 };
+
+  let net = 0;
+
+  if (outcome === "push") {
+    // return bet
+    BJ.bankroll += bet;
+    net = 0;
+  } else if (outcome === "youLose") {
+    // lost bet (already deducted)
+    net = -bet;
+  } else {
+    // win: return bet + profit
+    const profit = youBlackjack ? bet * 1.5 : bet * 1.0;
+    BJ.bankroll += bet + profit;
+    net = profit;
+  }
+
+  // reset bet for next round
+  BJ.currentBet = 0;
+  BJ.betChips = [];
+  BJ.selectedChip = null;
+
+  syncBankrollUI();
+  syncBetUI();
+  renderBetStack();
+  syncChipTraySelection();
+  syncBetHint();
+
+  return { net };
+}
+
+function computeOutcomeAfterFinal() {
+  const you = handTotals(youHand(), { includeFaceDown: true });
+  const opp = handTotals(oppHand(), { includeFaceDown: true });
+
+  const youBust = you.total > 21;
+  const oppBust = opp.total > 21;
+
+  if (youBust && oppBust) return { outcome: "push", youBlackjack: false }; // extremely rare with current flow
+  if (youBust) return { outcome: "youLose", youBlackjack: false };
+  if (oppBust) return { outcome: "youWin", youBlackjack: false };
+
+  if (you.total > opp.total) return { outcome: "youWin", youBlackjack: you.blackjack };
+  if (you.total < opp.total) return { outcome: "youLose", youBlackjack: false };
+  return { outcome: "push", youBlackjack: false };
+}
+
 async function startNewRound() {
   if (BJ.uiBusy) return;
+  if (BJ.betLocked) return;
+
+  if (BJ.currentBet <= 0) {
+    setStatus("Place a bet first (add chips), then click “New round”.");
+    return;
+  }
+
   BJ.uiBusy = true;
+
+  lockBet();
 
   clearHandsUI();
   BJ.player = [];
@@ -426,7 +795,7 @@ async function startNewRound() {
   // Hide dealer hole only when controlling player (authentic)
   BJ.dealerHoleDown = BJ.controlled === "player";
 
-  setStatus("Dealing...");
+  setStatus(`Dealing... Bet: ${formatMoney(BJ.currentBet)}`);
   await sleep(120);
 
   // Deal sequence: P, D, P, D(hole maybe)
@@ -441,7 +810,7 @@ async function startNewRound() {
 
   await dealToDealer({ faceDown: BJ.dealerHoleDown });
 
-  // Check naturals
+  // Check naturals (both totals computed with hole included)
   const p = handTotals(BJ.player, { includeFaceDown: true });
   const d = handTotals(BJ.dealer, { includeFaceDown: true });
 
@@ -449,14 +818,15 @@ async function startNewRound() {
     revealDealerHoleIfNeeded();
     await sleep(120);
 
-    if (p.blackjack && d.blackjack) {
-      endRound({ outcome: "push", message: "Push — both have Blackjack." });
-    } else if (p.blackjack) {
-      endRound({ outcome: "playerWin", message: "Player wins — Blackjack." });
-    } else {
-      endRound({ outcome: "dealerWin", message: "Dealer wins — Blackjack." });
-    }
+    const you = handTotals(youHand(), { includeFaceDown: true });
+    const opp = handTotals(oppHand(), { includeFaceDown: true });
 
+    let outcome;
+    if (you.blackjack && opp.blackjack) outcome = "push";
+    else if (you.blackjack) outcome = "youWin";
+    else outcome = "youLose";
+
+    endRoundWithSettlement(outcome, { youBlackjack: you.blackjack, reason: "Blackjack resolution." });
     BJ.uiBusy = false;
     return;
   }
@@ -471,8 +841,8 @@ async function startNewRound() {
     const pb = isBust(BJ.player, { includeFaceDown: true });
     if (pb) {
       el.playerHand.classList.add("bust");
-      revealDealerHoleIfNeeded(); // dealer isn't hiding anyway here
-      endRound({ outcome: "dealerWin", message: "Player busts. Dealer wins." });
+      revealDealerHoleIfNeeded();
+      endRoundWithSettlement("youWin", { youBlackjack: false, reason: "Player busts." });
       BJ.uiBusy = false;
       return;
     }
@@ -494,7 +864,6 @@ async function startNewRound() {
 
 async function cpuPlayPlayer() {
   // Simple CPU: hit until total >= 17 (stands on soft 17)
-  // (This is intentionally simple; you can upgrade to basic strategy later.)
   while (true) {
     const ht = handTotals(BJ.player, { includeFaceDown: true });
     if (ht.total > 21) return;
@@ -504,8 +873,6 @@ async function cpuPlayPlayer() {
       await dealToPlayer();
       continue;
     }
-
-    // stands on 17+
     return;
   }
 }
@@ -518,26 +885,36 @@ async function cpuPlayDealer() {
   while (true) {
     const d = handTotals(BJ.dealer, { includeFaceDown: true });
     if (d.total > 21) return;
-
-    // stand on 17+ (including soft 17)
     if (d.total >= 17) return;
-
     await sleep(180);
     await dealToDealer({ faceDown: false });
   }
 }
 
-function endRound({ outcome, message }) {
+function endRoundWithSettlement(outcome, { youBlackjack, reason }) {
   BJ.phase = "roundOver";
 
   updateScoresUI();
   markOutcomeUI(outcome);
 
-  const p = handTotals(BJ.player, { includeFaceDown: true });
-  const d = handTotals(BJ.dealer, { includeFaceDown: true });
+  // settlement
+  const { net } = settleBet({ outcome, youBlackjack });
 
-  setStatus(`${message} (Player ${p.total} vs Dealer ${d.total})`);
+  const you = handTotals(youHand(), { includeFaceDown: true });
+  const opp = handTotals(oppHand(), { includeFaceDown: true });
+
+  const outcomeText =
+    outcome === "push" ? "Push" : (outcome === "youWin" ? "You win" : "You lose");
+
+  const netText =
+    outcome === "push" ? "0" : formatMoney(net);
+
+  setStatus(
+    `${outcomeText}. Net: ${netText}. (You ${you.total} vs Opp ${opp.total}) ${reason ? `— ${reason}` : ""}`
+  );
+
   setButtonsEnabled({ newRound: true, hit: false, stand: false });
+  unlockBet();
 }
 
 async function onHit() {
@@ -559,14 +936,14 @@ async function onHit() {
     if (p.total > 21) {
       el.playerHand.classList.add("bust");
       revealDealerHoleIfNeeded();
-      endRound({ outcome: "dealerWin", message: "Player busts. Dealer wins." });
+      endRoundWithSettlement("youLose", { youBlackjack: false, reason: "You busted." });
     }
   } else {
     await dealToDealer({ faceDown: false });
     const d = handTotals(BJ.dealer, { includeFaceDown: true });
     if (d.total > 21) {
       el.dealerHand.classList.add("bust");
-      endRound({ outcome: "playerWin", message: "Dealer busts. Player wins." });
+      endRoundWithSettlement("youLose", { youBlackjack: false, reason: "You busted." });
     }
   }
 
@@ -590,19 +967,11 @@ async function onStand() {
     setStatus("Dealer turn...");
     await cpuPlayDealer();
 
-    const p = handTotals(BJ.player, { includeFaceDown: true });
     const d = handTotals(BJ.dealer, { includeFaceDown: true });
+    if (d.total > 21) el.dealerHand.classList.add("bust");
 
-    if (d.total > 21) {
-      el.dealerHand.classList.add("bust");
-      endRound({ outcome: "playerWin", message: "Dealer busts. Player wins." });
-    } else if (d.total > p.total) {
-      endRound({ outcome: "dealerWin", message: "Dealer wins." });
-    } else if (d.total < p.total) {
-      endRound({ outcome: "playerWin", message: "Player wins." });
-    } else {
-      endRound({ outcome: "push", message: "Push." });
-    }
+    const { outcome, youBlackjack } = computeOutcomeAfterFinal();
+    endRoundWithSettlement(outcome, { youBlackjack, reason: "Round resolved." });
 
     BJ.uiBusy = false;
     return;
@@ -611,22 +980,11 @@ async function onStand() {
   // seat === "dealer": resolve immediately (player already played CPU)
   setButtonsEnabled({ newRound: false, hit: false, stand: false });
 
-  const p = handTotals(BJ.player, { includeFaceDown: true });
   const d = handTotals(BJ.dealer, { includeFaceDown: true });
+  if (d.total > 21) el.dealerHand.classList.add("bust");
 
-  if (d.total > 21) {
-    el.dealerHand.classList.add("bust");
-    endRound({ outcome: "playerWin", message: "Dealer busts. Player wins." });
-  } else if (p.total > 21) {
-    el.playerHand.classList.add("bust");
-    endRound({ outcome: "dealerWin", message: "Player busts. Dealer wins." });
-  } else if (d.total > p.total) {
-    endRound({ outcome: "dealerWin", message: "Dealer wins." });
-  } else if (d.total < p.total) {
-    endRound({ outcome: "playerWin", message: "Player wins." });
-  } else {
-    endRound({ outcome: "push", message: "Push." });
-  }
+  const { outcome, youBlackjack } = computeOutcomeAfterFinal();
+  endRoundWithSettlement(outcome, { youBlackjack, reason: "Round resolved." });
 
   BJ.uiBusy = false;
 }
@@ -646,6 +1004,16 @@ function closeRoleModal() {
 function setControlledSeat(seat) {
   BJ.controlled = seat; // "player" | "dealer"
   updateRolePills();
+
+  // reset bet UI (but keep bankroll) because "you" changed seats
+  BJ.currentBet = 0;
+  BJ.betChips = [];
+  BJ.selectedChip = null;
+  BJ.betLocked = false;
+  renderBetStack();
+  syncBetUI();
+  syncChipTraySelection();
+  syncBetHint();
 }
 
 /* --------------------------
@@ -654,7 +1022,7 @@ function setControlledSeat(seat) {
 
 function hardResetAll() {
   showScreen("home");
-  resetBlackjackState();
+  resetBlackjackState({ hard: true });
   closeRoleModal();
 }
 
@@ -664,7 +1032,7 @@ function enterSelect() {
 
 function enterBlackjack() {
   showScreen("blackjack");
-  resetBlackjackState();
+  resetBlackjackState({ hard: true });
   openRoleModal();
 }
 
@@ -683,13 +1051,13 @@ function wireEvents() {
   el.btnControlPlayer.addEventListener("click", () => {
     setControlledSeat("player");
     closeRoleModal();
-    setStatus("Ready. Click “New round” to deal.");
+    setStatus("Place a bet (chips), then click “New round”.");
   });
 
   el.btnControlDealer.addEventListener("click", () => {
     setControlledSeat("dealer");
     closeRoleModal();
-    setStatus("Ready. Click “New round” to deal.");
+    setStatus("Place a bet (chips), then click “New round”.");
   });
 
   // Close modal when clicking scrim
@@ -697,19 +1065,42 @@ function wireEvents() {
     const t = e.target;
     if (t && t.dataset && t.dataset.close === "true") {
       closeRoleModal();
-      setStatus("Ready. Click “New round” to deal.");
+      setStatus("Place a bet (chips), then click “New round”.");
     }
   });
 
+  // Bet spot click to add selected chip
+  el.betSpot.addEventListener("click", () => {
+    if (BJ.betLocked) return;
+    if (!BJ.selectedChip) {
+      setStatus("Select a chip first.");
+      return;
+    }
+    const ok = addChipToBet(BJ.selectedChip);
+    if (!ok) setStatus("Cannot add chip (insufficient bankroll or bet locked).");
+  });
+
+  el.btnUndoChip.addEventListener("click", () => undoChip());
+  el.btnClearBet.addEventListener("click", () => clearBet());
+
   // Hotkeys
   window.addEventListener("keydown", (e) => {
-    if (screens.blackjack.classList.contains("is-active")) {
-      if (e.key === "h" || e.key === "H") el.btnHit.click();
-      if (e.key === "s" || e.key === "S") el.btnStand.click();
-      if (e.key === "n" || e.key === "N") el.btnNewRound.click();
-      if (e.key === "Escape") {
-        if (!el.roleModal.classList.contains("is-hidden")) closeRoleModal();
+    if (!screens.blackjack.classList.contains("is-active")) return;
+
+    if (e.key === "h" || e.key === "H") el.btnHit.click();
+    if (e.key === "s" || e.key === "S") el.btnStand.click();
+    if (e.key === "n" || e.key === "N") el.btnNewRound.click();
+
+    if (!BJ.betLocked) {
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        undoChip();
       }
+      if (e.key === "c" || e.key === "C") clearBet();
+    }
+
+    if (e.key === "Escape") {
+      if (!el.roleModal.classList.contains("is-hidden")) closeRoleModal();
     }
   });
 }
@@ -721,7 +1112,7 @@ function wireEvents() {
 function init() {
   wireEvents();
   showScreen("home");
-  resetBlackjackState();
+  resetBlackjackState({ hard: true });
 }
 
 init();
