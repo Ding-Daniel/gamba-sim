@@ -21,6 +21,9 @@
   --speed: 460ms;
   --speed-fast: 260ms;
 
+  /* Chips */
+  --chip: 46px;
+
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
@@ -321,7 +324,7 @@ button { font: inherit; }
 }
 
 .seat-dealer { padding-top: 22px; }
-.seat-player { padding-bottom: 18px; }
+.seat-player { padding-bottom: 14px; }
 
 .seat-header {
   display: flex;
@@ -377,11 +380,131 @@ button { font: inherit; }
   100% { transform: translateX(0); }
 }
 
+/* Bet spot (center) */
+.bet-spot-wrap {
+  position: relative;
+  z-index: 2;
+  padding: 0 18px 6px;
+  display: grid;
+  place-items: center;
+}
+
+.bet-spot-header {
+  width: min(520px, 92%);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 10px;
+}
+
+.bet-spot-title { font-weight: 900; letter-spacing: 0.2px; }
+.bet-spot-amt { font-size: 13px; color: var(--muted); }
+
+.bet-spot {
+  width: min(520px, 92%);
+  height: 124px;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0, 0, 0, 0.16);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 16px 34px rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+
+.bet-spot.is-locked {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.bet-spot-ring {
+  position: absolute;
+  inset: 18px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  background: radial-gradient(240px 120px at 50% 50%, rgba(255,255,255,0.05), transparent 70%);
+  pointer-events: none;
+}
+
+.bet-spot-hint {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  color: rgba(255,255,255,0.62);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.chip-stack {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  width: calc(var(--chip) * 1.25);
+  height: 92px;
+  pointer-events: none;
+}
+
+/* The chips in the bet stack are absolutely positioned with incremental Y offsets */
+.stack-chip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--chip);
+  height: var(--chip);
+  border-radius: 999px;
+  box-shadow: 0 14px 26px rgba(0,0,0,0.42);
+  border: 2px solid rgba(255,255,255,0.16);
+  overflow: hidden;
+}
+
+.stack-chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.34), transparent 55%),
+    radial-gradient(circle at 65% 70%, rgba(0,0,0,0.18), transparent 55%);
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+}
+
+.stack-chip::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 999px;
+  border: 2px dashed rgba(255,255,255,0.38);
+  opacity: 0.6;
+}
+
+.stack-chip .stack-chip-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+
+.stack-chip.pop {
+  animation: chip-pop 220ms cubic-bezier(.2,.9,.2,1) 1;
+}
+
+@keyframes chip-pop {
+  0% { transform: translateX(-50%) scale(0.92); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
 .controls {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.25fr;
   gap: 14px;
   padding: 16px 18px 18px;
   border-top: 1px solid rgba(255,255,255,0.10);
@@ -393,8 +516,11 @@ button { font: inherit; }
 }
 
 .controls-left { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.controls-right { display: flex; align-items: center; justify-content: flex-end; }
-@media (max-width: 920px) { .controls-right { justify-content: flex-start; } }
+.controls-right { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: start; }
+
+@media (max-width: 920px) {
+  .controls-right { grid-template-columns: 1fr; }
+}
 
 .status {
   padding: 10px 12px;
@@ -406,6 +532,128 @@ button { font: inherit; }
   display: flex;
   align-items: center;
   line-height: 1.35;
+}
+
+.hud {
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  padding: 10px 12px;
+}
+
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.hud-label { color: rgba(255,255,255,0.62); font-size: 12px; }
+.hud-value { font-weight: 900; letter-spacing: 0.2px; }
+
+/* CHIP TRAY */
+.chip-tray {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 14px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.10), rgba(0,0,0,0.18));
+}
+
+@media (max-width: 920px) {
+  .chip-tray { grid-template-columns: 1fr; }
+}
+
+.chip-tray-title { font-weight: 900; }
+.chip-tray-sub { margin-top: 6px; color: rgba(255,255,255,0.62); font-size: 12px; line-height: 1.4; }
+
+.chip-tray-right {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.chip-set {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chip-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* The chip in the tray */
+.chip {
+  width: var(--chip);
+  height: var(--chip);
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.16);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.35);
+  position: relative;
+  cursor: pointer;
+  transition: transform var(--speed-fast), filter var(--speed-fast), opacity var(--speed-fast);
+  user-select: none;
+}
+
+.chip:hover {
+  transform: translateY(-1px) scale(1.02);
+}
+
+.chip:active { transform: translateY(0) scale(0.99); }
+
+.chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.34), transparent 55%),
+    radial-gradient(circle at 65% 70%, rgba(0,0,0,0.18), transparent 55%);
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+}
+
+.chip::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 999px;
+  border: 2px dashed rgba(255,255,255,0.38);
+  opacity: 0.6;
+}
+
+.chip-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: -0.02em;
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+
+.chip.is-selected {
+  transform: translateY(-2px) scale(1.06);
+  filter: saturate(1.15);
+  outline: 2px solid rgba(255,255,255,0.24);
+  outline-offset: 3px;
+}
+
+.chip.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* DECK */
