@@ -1,4 +1,4 @@
-
+<!-- index.html -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -154,7 +154,7 @@
                     <span class="muted">Total:</span> <span id="player-score">—</span>
                   </div>
                 </div>
-                <div id="player-hand" class="hand" aria-label="Player hand"></div>
+                <div id="player-hand" class="hand-group" aria-label="Player hands"></div>
               </section>
 
               <!-- CONTROLS -->
@@ -163,6 +163,8 @@
                   <button id="btn-new-round" class="btn btn-primary" type="button">New round</button>
                   <button id="btn-hit" class="btn" type="button">Hit</button>
                   <button id="btn-stand" class="btn" type="button">Stand</button>
+                  <button id="btn-double" class="btn" type="button">Double</button>
+                  <button id="btn-split" class="btn" type="button">Split</button>
                 </div>
 
                 <div class="controls-right">
@@ -236,8 +238,8 @@
               </div>
 
               <div class="modal-footnote">
-                Rules: single hand, dealer stands on soft 17. Betting: win 1:1, blackjack 3:2,
-                push returns, loss loses bet.
+                Rules: dealer stands on soft 17. Actions: hit/stand, double (one card then stand), split (same-rank pair; one split).
+                Betting: win 1:1, blackjack 3:2, push returns, loss loses bet.
               </div>
             </div>
           </div>
