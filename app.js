@@ -1,3 +1,4 @@
+// app.js
 "use strict";
 
 /**
@@ -8,9 +9,14 @@
  * - Bet is placed via selectable chips, shown as a stacked pile
  * - Bet locks when a round begins
  *
+ * Actions:
+ * - Hit / Stand (standard)
+ * - Double (Player only): doubles the active hand bet, draws exactly one card, then stands
+ * - Split (Player only): when the initial 2 cards are the same rank; one split maximum
+ *
  * Payouts:
  * - Normal win: +1x profit (bet returned + profit)
- * - Blackjack win (natural 21 with 2 cards): +1.5x profit (3:2)
+ * - Blackjack win (natural 21 with 2 cards, no split): +1.5x profit (3:2)
  * - Push: bet returned
  * - Loss: bet lost
  */
@@ -31,7 +37,7 @@ const el = {
 
   // Blackjack UI
   dealerHand: $("#dealer-hand"),
-  playerHand: $("#player-hand"),
+  playerHand: $("#player-hand"), // wrapper (can contain 1 or 2 .hand elements)
   dealerScore: $("#dealer-score"),
   playerScore: $("#player-score"),
   status: $("#status"),
@@ -41,6 +47,8 @@ const el = {
   btnNewRound: $("#btn-new-round"),
   btnHit: $("#btn-hit"),
   btnStand: $("#btn-stand"),
+  btnDouble: $("#btn-double"),
+  btnSplit: $("#btn-split"),
 
   // Role
   roleModal: $("#role-modal"),
@@ -120,11 +128,7 @@ function buildShoe(numDecks = 4) {
   for (let d = 0; d < numDecks; d++) {
     for (const s of SUITS) {
       for (const r of RANKS) {
-        cards.push({
-          rank: r,
-          suit: s.sym,
-          color: s.color,
-        });
+        cards.push({ rank: r, suit: s.sym, color: s.color });
       }
     }
   }
@@ -143,11 +147,11 @@ function cardBaseValue(rank) {
 -------------------------- */
 
 const CHIP_DENOMS = [
-  { value: 25, label: "25", color: "#5ee6b2" },     // mint
-  { value: 100, label: "100", color: "#5eb6ff" },   // blue
-  { value: 500, label: "500", color: "#ff77ec" },   // pink
-  { value: 1000, label: "1K", color: "#ffd36b" },   // gold
-  { value: 5000, label: "5K", color: "#a78bfa" },   // purple
+  { value: 25, label: "25", color: "#5ee6b2" }, // mint
+  { value: 100, label: "100", color: "#5eb6ff" }, // blue
+  { value: 500, label: "500", color: "#ff77ec" }, // pink
+  { value: 1000, label: "1K", color: "#ffd36b" }, // gold
+  { value: 5000, label: "5K", color: "#a78bfa" }, // purple
   { value: 25000, label: "25K", color: "#ff5454" }, // red
 ];
 
@@ -162,7 +166,9 @@ function chipLabelForValue(v) {
 }
 
 function buildChipTray() {
+  // (Re)build chip buttons so visuals are consistent even if HTML is edited.
   el.chipSet.innerHTML = "";
+
   for (const c of CHIP_DENOMS) {
     const chip = document.createElement("button");
     chip.type = "button";
@@ -197,7 +203,7 @@ function syncChipTraySelection() {
   for (const node of nodes) {
     const v = Number(node.dataset.value);
     node.classList.toggle("is-selected", v === BJ.selectedChip);
-    // disable chip if can't afford right now
+
     const canAfford = BJ.bankroll >= v;
     node.classList.toggle("is-disabled", !canAfford || BJ.betLocked);
     node.disabled = !canAfford || BJ.betLocked;
@@ -210,12 +216,14 @@ function syncBetHint() {
     el.betSpot.classList.add("is-locked");
     return;
   }
+
   el.betSpot.classList.remove("is-locked");
 
   if (!BJ.selectedChip) {
     el.betHint.textContent = "Select a chip, then click to add.";
     return;
   }
+
   el.betHint.textContent = `Selected ${formatMoney(BJ.selectedChip)}. Click to add.`;
 }
 
@@ -253,7 +261,6 @@ function clearBet() {
   if (BJ.betLocked) return;
   if (!BJ.betChips.length) return;
 
-  // refund all
   for (const v of BJ.betChips) BJ.bankroll += v;
   BJ.betChips = [];
   BJ.currentBet = 0;
@@ -280,57 +287,15 @@ function unlockBet() {
   el.btnClearBet.disabled = false;
 }
 
-function renderBetStack() {
-  el.betStack.innerHTML = "";
-
-  // compress into groups so the stack doesn't get absurdly tall with small chips
-  // Strategy: show up to 24 chips. If more, merge small chips into larger units visually.
-  const chips = normalizeChipsForDisplay(BJ.betChips);
-
-  const maxShown = 24;
-  const shown = chips.slice(-maxShown); // show top stack
-  const baseY = 52; // baseline within stack container
-  const step = 4;   // vertical offset per chip
-
-  for (let i = 0; i < shown.length; i++) {
-    const v = shown[i];
-    const chip = document.createElement("div");
-    chip.className = "stack-chip";
-    chip.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), transparent 55%), ${chipColorForValue(v)}`;
-
-    const y = baseY - i * step;
-    chip.style.top = `${y}px`;
-
-    // small random sideways jitter for realism (deterministic-ish)
-    const jitter = ((i * 17) % 7) - 3; // [-3..3]
-    chip.style.left = `calc(50% + ${jitter}px)`;
-
-    // label only on top chip
-    if (i === shown.length - 1) {
-      const label = document.createElement("div");
-      label.className = "stack-chip-label";
-      label.textContent = chipLabelForValue(v);
-      chip.appendChild(label);
-      chip.classList.add("pop");
-    }
-
-    el.betStack.appendChild(chip);
-  }
-}
-
 function normalizeChipsForDisplay(chips) {
-  // This is visual only; does not affect actual bet accounting.
-  // Combine many small chips into larger denominations for display if stack is too big.
+  // Visual only; does not affect accounting.
   if (chips.length <= 28) return chips.slice();
 
   const counts = new Map();
   for (const v of chips) counts.set(v, (counts.get(v) || 0) + 1);
 
-  // greedily combine lower to higher when possible
   const denoms = CHIP_DENOMS.map((d) => d.value).slice().sort((a, b) => a - b);
 
-  // helper to combine n of denom into next denom when exact ratio exists
-  // we use ratios based on value (e.g., 4x25=100, 5x100=500, 2x500=1000, 5x1000=5000, 5x5000=25000)
   const ratioToNext = new Map([
     [25, { next: 100, ratio: 4 }],
     [100, { next: 500, ratio: 5 }],
@@ -355,13 +320,46 @@ function normalizeChipsForDisplay(chips) {
     }
   }
 
-  // expand back to list
   const out = [];
   for (const d of denoms) {
     const c = counts.get(d) || 0;
     for (let i = 0; i < c; i++) out.push(d);
   }
   return out;
+}
+
+function renderBetStack() {
+  el.betStack.innerHTML = "";
+
+  const chips = normalizeChipsForDisplay(BJ.betChips);
+
+  const maxShown = 24;
+  const shown = chips.slice(-maxShown);
+  const baseY = 52;
+  const step = 4;
+
+  for (let i = 0; i < shown.length; i++) {
+    const v = shown[i];
+    const chip = document.createElement("div");
+    chip.className = "stack-chip";
+    chip.style.background = `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), transparent 55%), ${chipColorForValue(v)}`;
+
+    const y = baseY - i * step;
+    chip.style.top = `${y}px`;
+
+    const jitter = ((i * 17) % 7) - 3;
+    chip.style.left = `calc(50% + ${jitter}px)`;
+
+    if (i === shown.length - 1) {
+      const label = document.createElement("div");
+      label.className = "stack-chip-label";
+      label.textContent = chipLabelForValue(v);
+      chip.appendChild(label);
+      chip.classList.add("pop");
+    }
+
+    el.betStack.appendChild(chip);
+  }
 }
 
 function syncBankrollUI() {
@@ -382,39 +380,60 @@ const BJ = {
   phase: "idle", // "idle" | "dealing" | "playerTurn" | "dealerTurn" | "roundOver"
   uiBusy: false,
 
-  player: [],
+  // Dealer has one hand, player can have 1 or 2 hands (split)
   dealer: [],
+  playerHands: [[]],
+  activeHandIndex: 0,
+
+  // Per-hand state (player only)
+  handDone: [false],
+  handBets: [0],
+  handDoubled: [false],
 
   // if true, dealer's 2nd card is face-down (hidden from player)
   dealerHoleDown: true,
 
   // Betting
   bankroll: 100000,
-  currentBet: 0,
+  currentBet: 0, // total across all hands for this round (including split/double)
   betChips: [],
   selectedChip: null,
   betLocked: false,
+
+  // Betting snapshot for visual replication on split/double
+  baseBetAmount: 0,
+  baseBetChips: [],
 };
 
 function resetBlackjackState({ hard = false } = {}) {
   BJ.shoe = buildShoe(4);
   BJ.phase = "idle";
   BJ.uiBusy = false;
-  BJ.player = [];
+
   BJ.dealer = [];
+  BJ.playerHands = [[]];
+  BJ.activeHandIndex = 0;
+
+  BJ.handDone = [false];
+  BJ.handBets = [0];
+  BJ.handDoubled = [false];
+
   BJ.dealerHoleDown = true;
 
-  // Betting reset (keep bankroll unless hard)
   BJ.currentBet = 0;
   BJ.betChips = [];
   BJ.selectedChip = null;
   BJ.betLocked = false;
 
+  BJ.baseBetAmount = 0;
+  BJ.baseBetChips = [];
+
   if (hard) BJ.bankroll = 100000;
 
   clearHandsUI();
+  ensurePlayerHandContainers(1);
   setStatus("Select chips and place a bet. Then click “New round”.");
-  setButtonsEnabled({ newRound: true, hit: false, stand: false });
+  setButtonsEnabled({ newRound: true, hit: false, stand: false, double: false, split: false });
 
   updateRolePills();
   updateScoresUI();
@@ -427,13 +446,46 @@ function resetBlackjackState({ hard = false } = {}) {
   syncBetHint();
   el.btnUndoChip.disabled = false;
   el.btnClearBet.disabled = false;
+
+  // Ensure special buttons start disabled
+  if (el.btnDouble) el.btnDouble.disabled = true;
+  if (el.btnSplit) el.btnSplit.disabled = true;
 }
 
 function clearHandsUI() {
-  el.playerHand.classList.remove("bust", "win", "lose");
+  // Dealer
   el.dealerHand.classList.remove("bust", "win", "lose");
-  el.playerHand.innerHTML = "";
   el.dealerHand.innerHTML = "";
+
+  // Player wrapper: wipe and rebuild containers later
+  el.playerHand.innerHTML = "";
+}
+
+function ensurePlayerHandContainers(count) {
+  el.playerHand.innerHTML = "";
+  for (let i = 0; i < count; i++) {
+    const handEl = document.createElement("div");
+    handEl.className = "hand split-hand";
+    handEl.dataset.hand = String(i);
+    el.playerHand.appendChild(handEl);
+  }
+  syncActiveHandUI();
+}
+
+function playerHandEls() {
+  return Array.from(el.playerHand.querySelectorAll(".hand"));
+}
+
+function getPlayerHandEl(idx) {
+  const hands = playerHandEls();
+  return hands[idx] || null;
+}
+
+function syncActiveHandUI() {
+  const hands = playerHandEls();
+  for (let i = 0; i < hands.length; i++) {
+    hands[i].classList.toggle("is-active", i === BJ.activeHandIndex);
+  }
 }
 
 function updateRolePills() {
@@ -453,7 +505,7 @@ function updateRolePills() {
 -------------------------- */
 
 function handTotals(cards, { includeFaceDown = true } = {}) {
-  // Returns bestTotal (<=21 if possible), isSoft, isBlackjack (2-card 21)
+  // Returns { total, soft, blackjack } where blackjack is "natural blackjack" (2-card 21)
   let total = 0;
   let aces = 0;
   let count = 0;
@@ -465,7 +517,6 @@ function handTotals(cards, { includeFaceDown = true } = {}) {
     count++;
   }
 
-  // Reduce Aces from 11 to 1 as needed
   let soft = aces > 0;
   while (total > 21 && aces > 0) {
     total -= 10;
@@ -543,7 +594,6 @@ function escapeHtml(s) {
 async function animateDeal(toHandEl, card, { faceDown = false } = {}) {
   const deckRect = el.deck.getBoundingClientRect();
 
-  // Placeholder to get exact target rect in the hand
   const slot = document.createElement("div");
   slot.style.width = "var(--card-w)";
   slot.style.height = "var(--card-h)";
@@ -552,7 +602,6 @@ async function animateDeal(toHandEl, card, { faceDown = false } = {}) {
 
   const targetRect = slot.getBoundingClientRect();
 
-  // Floating card in anim layer
   const floating = makeCardElement(card, { faceDown });
   floating.style.position = "fixed";
   floating.style.left = "0px";
@@ -560,18 +609,15 @@ async function animateDeal(toHandEl, card, { faceDown = false } = {}) {
   floating.style.margin = "0";
   floating.style.zIndex = "9999";
 
-  // Start at deck
   const startX = deckRect.left + deckRect.width / 2 - targetRect.width / 2;
   const startY = deckRect.top + deckRect.height / 2 - targetRect.height / 2;
 
-  // End at slot
   const endX = targetRect.left;
   const endY = targetRect.top;
 
   floating.style.transform = `translate(${startX}px, ${startY}px) rotate(-10deg) scale(0.96)`;
   el.animLayer.appendChild(floating);
 
-  // Next frame: animate to target
   await new Promise((resolve) => requestAnimationFrame(resolve));
 
   const anim = floating.animate(
@@ -579,19 +625,14 @@ async function animateDeal(toHandEl, card, { faceDown = false } = {}) {
       { transform: `translate(${startX}px, ${startY}px) rotate(-10deg) scale(0.96)` },
       { transform: `translate(${endX}px, ${endY}px) rotate(0deg) scale(1)` },
     ],
-    {
-      duration: 520,
-      easing: "cubic-bezier(.2,.9,.2,1)",
-    }
+    { duration: 520, easing: "cubic-bezier(.2,.9,.2,1)" }
   );
 
   await anim.finished.catch(() => {});
 
-  // Clean up
   el.animLayer.removeChild(floating);
   toHandEl.removeChild(slot);
 
-  // Append as normal in hand
   const finalCardEl = makeCardElement(card, { faceDown });
   toHandEl.appendChild(finalCardEl);
 
@@ -608,78 +649,111 @@ function flipCard(cardEl, faceDown) {
    UI controls
 -------------------------- */
 
-function setButtonsEnabled({ newRound, hit, stand }) {
+function setButtonsEnabled({ newRound, hit, stand, double = false, split = false }) {
   el.btnNewRound.disabled = !newRound;
   el.btnHit.disabled = !hit;
   el.btnStand.disabled = !stand;
+
+  if (el.btnDouble) el.btnDouble.disabled = !double;
+  if (el.btnSplit) el.btnSplit.disabled = !split;
 }
 
 function updateScoresUI() {
-  // If player controls: dealer hole is hidden until dealer turn/round end
   const dealerIncludeHole = !(BJ.controlled === "player" && BJ.dealerHoleDown);
 
-  const p = handTotals(BJ.player, { includeFaceDown: true });
-  const d = handTotals(BJ.dealer, { includeFaceDown: dealerIncludeHole });
+  // Player score: single total or split totals
+  if (!BJ.playerHands.length || !BJ.playerHands[0].length) {
+    el.playerScore.textContent = "—";
+  } else if (BJ.playerHands.length === 1) {
+    const p = handTotals(BJ.playerHands[0], { includeFaceDown: true });
+    el.playerScore.textContent = String(p.total);
+  } else {
+    const parts = BJ.playerHands.map((h, idx) => {
+      const t = handTotals(h, { includeFaceDown: true }).total;
+      const activeMark = idx === BJ.activeHandIndex ? "*" : "";
+      return `H${idx + 1}:${t}${activeMark}`;
+    });
+    el.playerScore.textContent = parts.join(" | ");
+  }
 
-  el.playerScore.textContent = BJ.player.length ? String(p.total) : "—";
-
+  // Dealer score
   if (!BJ.dealer.length) {
     el.dealerScore.textContent = "—";
   } else if (dealerIncludeHole) {
+    const d = handTotals(BJ.dealer, { includeFaceDown: true });
     el.dealerScore.textContent = String(d.total);
   } else {
-    // show partial: visible total + " + ?"
     const visible = handTotals(BJ.dealer, { includeFaceDown: false }).total;
     el.dealerScore.textContent = `${visible} + ?`;
   }
 }
 
-function markOutcomeUI(outcome) {
-  // outcome: "youWin" | "youLose" | "push"
-  el.playerHand.classList.remove("win", "lose");
-  el.dealerHand.classList.remove("win", "lose");
+function clearOutcomeUI() {
+  // Dealer
+  el.dealerHand.classList.remove("bust", "win", "lose");
 
-  const you = BJ.controlled;
-
-  if (outcome === "push") return;
-
-  if (you === "player") {
-    if (outcome === "youWin") {
-      el.playerHand.classList.add("win");
-      el.dealerHand.classList.add("lose");
-    } else {
-      el.playerHand.classList.add("lose");
-      el.dealerHand.classList.add("win");
-    }
-  } else {
-    // you === dealer
-    if (outcome === "youWin") {
-      el.dealerHand.classList.add("win");
-      el.playerHand.classList.add("lose");
-    } else {
-      el.dealerHand.classList.add("lose");
-      el.playerHand.classList.add("win");
-    }
+  // Player hands
+  for (const h of playerHandEls()) {
+    h.classList.remove("bust", "win", "lose");
   }
 }
 
+function markOutcomeSingle(outcome) {
+  // outcome: "youWin" | "youLose" | "push"
+  clearOutcomeUI();
+
+  const you = BJ.controlled;
+  const youEl = you === "player" ? getPlayerHandEl(0) : el.dealerHand;
+  const oppEl = you === "player" ? el.dealerHand : getPlayerHandEl(0);
+
+  if (outcome === "push") return;
+
+  if (outcome === "youWin") {
+    youEl?.classList.add("win");
+    oppEl?.classList.add("lose");
+  } else {
+    youEl?.classList.add("lose");
+    oppEl?.classList.add("win");
+  }
+}
+
+function markOutcomeSplit(outcomes) {
+  // outcomes per player hand: "youWin" | "youLose" | "push"
+  clearOutcomeUI();
+
+  for (let i = 0; i < outcomes.length; i++) {
+    const o = outcomes[i];
+    const hEl = getPlayerHandEl(i);
+    if (!hEl) continue;
+    if (o === "youWin") hEl.classList.add("win");
+    if (o === "youLose") hEl.classList.add("lose");
+  }
+
+  // Dealer highlight only if uniform outcome
+  const allLose = outcomes.every((o) => o === "youLose");
+  const allWin = outcomes.every((o) => o === "youWin");
+  if (allLose) el.dealerHand.classList.add("win");
+  if (allWin) el.dealerHand.classList.add("lose");
+}
+
 /* --------------------------
-   Game flow
+   Game flow helpers
 -------------------------- */
 
 function drawCard() {
-  if (BJ.shoe.length < 15) {
-    // re-shoe (simple)
-    BJ.shoe = buildShoe(4);
-  }
+  if (BJ.shoe.length < 15) BJ.shoe = buildShoe(4);
   const c = BJ.shoe.pop();
   return { ...c, faceDown: false };
 }
 
-async function dealToPlayer() {
+async function dealToPlayer({ handIndex = BJ.activeHandIndex } = {}) {
   const c = drawCard();
-  BJ.player.push(c);
-  await animateDeal(el.playerHand, c, { faceDown: false });
+  BJ.playerHands[handIndex].push(c);
+
+  const handEl = getPlayerHandEl(handIndex);
+  if (!handEl) throw new Error(`Missing player hand element for index ${handIndex}`);
+  await animateDeal(handEl, c, { faceDown: false });
+
   updateScoresUI();
   return c;
 }
@@ -707,45 +781,146 @@ function revealDealerHoleIfNeeded() {
   if (revealed) updateScoresUI();
 }
 
-function currentControlledSeat() {
-  return BJ.controlled; // "player" | "dealer"
+function baseBetIsIntegerMultiple() {
+  if (!BJ.baseBetAmount) return false;
+  const ratio = BJ.currentBet / BJ.baseBetAmount;
+  const nearest = Math.round(ratio);
+  return Math.abs(ratio - nearest) < 1e-9;
 }
 
-function youHand() {
-  return BJ.controlled === "player" ? BJ.player : BJ.dealer;
+function syncBetVisualToTotal() {
+  if (!BJ.betLocked) {
+    renderBetStack();
+    return;
+  }
+  if (!BJ.baseBetAmount || !BJ.baseBetChips.length) {
+    renderBetStack();
+    return;
+  }
+
+  if (!baseBetIsIntegerMultiple()) {
+    renderBetStack();
+    return;
+  }
+
+  const mult = Math.max(1, Math.round(BJ.currentBet / BJ.baseBetAmount));
+  const chips = [];
+  for (let i = 0; i < mult; i++) chips.push(...BJ.baseBetChips);
+
+  BJ.betChips = chips;
+  renderBetStack();
 }
 
-function oppHand() {
-  return BJ.controlled === "player" ? BJ.dealer : BJ.player;
+function syncTotalBetFromHandBets() {
+  BJ.currentBet = BJ.handBets.reduce((a, b) => a + b, 0);
+  syncBetUI();
+  syncBetVisualToTotal();
 }
 
-function settleBet({ outcome, youBlackjack }) {
-  // outcome: "youWin" | "youLose" | "push"
-  // bet was already removed from bankroll when chips were added.
-  const bet = BJ.currentBet;
+function canPlayerActNow() {
+  return BJ.controlled === "player" && BJ.phase === "playerTurn";
+}
 
-  if (bet <= 0) return { net: 0 };
+function canDoubleDown(handIndex) {
+  if (!canPlayerActNow()) return false;
+  const h = BJ.playerHands[handIndex];
+  if (!h || h.length !== 2) return false;
+  if (BJ.handDone[handIndex]) return false;
+  if (BJ.handDoubled[handIndex]) return false;
+  return BJ.bankroll >= BJ.handBets[handIndex];
+}
 
+function canSplitNow() {
+  if (!canPlayerActNow()) return false;
+  if (BJ.playerHands.length !== 1) return false;
+  const h = BJ.playerHands[0];
+  if (!h || h.length !== 2) return false;
+  if (h[0].rank !== h[1].rank) return false;
+  // Must afford a second bet equal to the initial hand bet.
+  return BJ.bankroll >= BJ.handBets[0];
+}
+
+function syncActionButtons() {
+  const canActDealer = BJ.controlled === "dealer" && BJ.phase === "dealerTurn";
+
+  const hit = canPlayerActNow() || canActDealer;
+  const stand = canPlayerActNow() || canActDealer;
+
+  const dbl = canPlayerActNow() && canDoubleDown(BJ.activeHandIndex);
+  const spl = canPlayerActNow() && canSplitNow();
+
+  // newRound enabled only when idle/roundOver
+  const newRound = BJ.phase === "idle" || BJ.phase === "roundOver";
+
+  setButtonsEnabled({ newRound, hit, stand, double: dbl, split: spl });
+}
+
+function computeOutcomeAfterFinalSingle() {
+  const youCards = BJ.controlled === "player" ? BJ.playerHands[0] : BJ.dealer;
+  const oppCards = BJ.controlled === "player" ? BJ.dealer : BJ.playerHands[0];
+
+  const you = handTotals(youCards, { includeFaceDown: true });
+  const opp = handTotals(oppCards, { includeFaceDown: true });
+
+  const youBust = you.total > 21;
+  const oppBust = opp.total > 21;
+
+  if (youBust && oppBust) return { outcome: "push", youBlackjack: false };
+  if (youBust) return { outcome: "youLose", youBlackjack: false };
+  if (oppBust) return { outcome: "youWin", youBlackjack: false };
+
+  if (you.total > opp.total) return { outcome: "youWin", youBlackjack: you.blackjack };
+  if (you.total < opp.total) return { outcome: "youLose", youBlackjack: false };
+  return { outcome: "push", youBlackjack: false };
+}
+
+function computeOutcomesAfterFinalSplit() {
+  // Player outcomes per hand vs dealer
+  const dealer = handTotals(BJ.dealer, { includeFaceDown: true });
+  const dealerBust = dealer.total > 21;
+
+  return BJ.playerHands.map((hand) => {
+    const p = handTotals(hand, { includeFaceDown: true });
+    if (p.total > 21) return "youLose";
+    if (dealerBust) return "youWin";
+    if (p.total > dealer.total) return "youWin";
+    if (p.total < dealer.total) return "youLose";
+    return "push";
+  });
+}
+
+function settleRound({ outcomes, blackjackFlags }) {
+  // outcomes: array per player hand if controlled=player; if controlled=dealer, outcomes length=1
+  // blackjackFlags: array<boolean> same length (natural blackjack only; split hands should be false)
   let net = 0;
 
-  if (outcome === "push") {
-    // return bet
-    BJ.bankroll += bet;
-    net = 0;
-  } else if (outcome === "youLose") {
-    // lost bet (already deducted)
-    net = -bet;
-  } else {
-    // win: return bet + profit
-    const profit = youBlackjack ? bet * 1.5 : bet * 1.0;
-    BJ.bankroll += bet + profit;
-    net = profit;
+  for (let i = 0; i < outcomes.length; i++) {
+    const outcome = outcomes[i];
+    const bet = BJ.handBets[i] ?? 0;
+    if (bet <= 0) continue;
+
+    if (outcome === "push") {
+      BJ.bankroll += bet;
+    } else if (outcome === "youLose") {
+      net -= bet;
+    } else {
+      const profit = blackjackFlags?.[i] ? bet * 1.5 : bet * 1.0;
+      BJ.bankroll += bet + profit;
+      net += profit;
+    }
   }
 
   // reset bet for next round
   BJ.currentBet = 0;
   BJ.betChips = [];
   BJ.selectedChip = null;
+
+  BJ.baseBetAmount = 0;
+  BJ.baseBetChips = [];
+
+  BJ.handBets = [0];
+  BJ.handDone = [false];
+  BJ.handDoubled = [false];
 
   syncBankrollUI();
   syncBetUI();
@@ -756,121 +931,47 @@ function settleBet({ outcome, youBlackjack }) {
   return { net };
 }
 
-function computeOutcomeAfterFinal() {
-  const you = handTotals(youHand(), { includeFaceDown: true });
-  const opp = handTotals(oppHand(), { includeFaceDown: true });
+function endRound({ outcomes, blackjackFlags, reason }) {
+  BJ.phase = "roundOver";
+  revealDealerHoleIfNeeded();
+  updateScoresUI();
 
-  const youBust = you.total > 21;
-  const oppBust = opp.total > 21;
-
-  if (youBust && oppBust) return { outcome: "push", youBlackjack: false }; // extremely rare with current flow
-  if (youBust) return { outcome: "youLose", youBlackjack: false };
-  if (oppBust) return { outcome: "youWin", youBlackjack: false };
-
-  if (you.total > opp.total) return { outcome: "youWin", youBlackjack: you.blackjack };
-  if (you.total < opp.total) return { outcome: "youLose", youBlackjack: false };
-  return { outcome: "push", youBlackjack: false };
-}
-
-async function startNewRound() {
-  if (BJ.uiBusy) return;
-  if (BJ.betLocked) return;
-
-  if (BJ.currentBet <= 0) {
-    setStatus("Place a bet first (add chips), then click “New round”.");
-    return;
+  if (BJ.controlled === "player" && BJ.playerHands.length > 1) {
+    markOutcomeSplit(outcomes);
+  } else {
+    markOutcomeSingle(outcomes[0]);
   }
 
-  BJ.uiBusy = true;
+  const { net } = settleRound({ outcomes, blackjackFlags });
 
-  lockBet();
-
-  clearHandsUI();
-  BJ.player = [];
-  BJ.dealer = [];
-
-  BJ.phase = "dealing";
-  setButtonsEnabled({ newRound: false, hit: false, stand: false });
-
-  // Hide dealer hole only when controlling player (authentic)
-  BJ.dealerHoleDown = BJ.controlled === "player";
-
-  setStatus(`Dealing... Bet: ${formatMoney(BJ.currentBet)}`);
-  await sleep(120);
-
-  // Deal sequence: P, D, P, D(hole maybe)
-  await dealToPlayer();
-  await sleep(80);
-
-  await dealToDealer({ faceDown: false });
-  await sleep(80);
-
-  await dealToPlayer();
-  await sleep(80);
-
-  await dealToDealer({ faceDown: BJ.dealerHoleDown });
-
-  // Check naturals (both totals computed with hole included)
-  const p = handTotals(BJ.player, { includeFaceDown: true });
-  const d = handTotals(BJ.dealer, { includeFaceDown: true });
-
-  if (p.blackjack || d.blackjack) {
-    revealDealerHoleIfNeeded();
-    await sleep(120);
-
-    const you = handTotals(youHand(), { includeFaceDown: true });
-    const opp = handTotals(oppHand(), { includeFaceDown: true });
-
-    let outcome;
-    if (you.blackjack && opp.blackjack) outcome = "push";
-    else if (you.blackjack) outcome = "youWin";
-    else outcome = "youLose";
-
-    endRoundWithSettlement(outcome, { youBlackjack: you.blackjack, reason: "Blackjack resolution." });
-    BJ.uiBusy = false;
-    return;
-  }
-
-  // If controlling dealer, CPU plays player first
-  if (BJ.controlled === "dealer") {
-    setStatus("CPU Player turn...");
-    BJ.phase = "playerTurn";
-    await sleep(180);
-    await cpuPlayPlayer();
-
-    const pb = isBust(BJ.player, { includeFaceDown: true });
-    if (pb) {
-      el.playerHand.classList.add("bust");
-      revealDealerHoleIfNeeded();
-      endRoundWithSettlement("youWin", { youBlackjack: false, reason: "Player busts." });
-      BJ.uiBusy = false;
-      return;
+  const outcomeText = (() => {
+    if (BJ.controlled === "player" && BJ.playerHands.length > 1) {
+      const parts = outcomes.map((o, i) => {
+        if (o === "push") return `H${i + 1}: Push`;
+        if (o === "youWin") return `H${i + 1}: Win`;
+        return `H${i + 1}: Lose`;
+      });
+      return parts.join(" | ");
     }
+    const o = outcomes[0];
+    return o === "push" ? "Push" : (o === "youWin" ? "You win" : "You lose");
+  })();
 
-    // Dealer (YOU) now plays
-    BJ.phase = "dealerTurn";
-    setStatus("Your turn (Dealer). Hit or Stand.");
-    setButtonsEnabled({ newRound: false, hit: true, stand: true });
-    BJ.uiBusy = false;
-    return;
-  }
+  setStatus(`${outcomeText}. Net: ${formatMoney(net)}.${reason ? ` — ${reason}` : ""}`);
 
-  // Otherwise, player (YOU) turn
-  BJ.phase = "playerTurn";
-  setStatus("Your turn (Player). Hit or Stand.");
-  setButtonsEnabled({ newRound: false, hit: true, stand: true });
-  BJ.uiBusy = false;
+  unlockBet();
+  syncActionButtons();
 }
 
-async function cpuPlayPlayer() {
-  // Simple CPU: hit until total >= 17 (stands on soft 17)
+async function cpuPlayPlayerSingle() {
+  // CPU player: hit until total >= 17 (stands on soft 17)
   while (true) {
-    const ht = handTotals(BJ.player, { includeFaceDown: true });
+    const ht = handTotals(BJ.playerHands[0], { includeFaceDown: true });
     if (ht.total > 21) return;
 
     if (ht.total < 17) {
       await sleep(160);
-      await dealToPlayer();
+      await dealToPlayer({ handIndex: 0 });
       continue;
     }
     return;
@@ -891,59 +992,186 @@ async function cpuPlayDealer() {
   }
 }
 
-function endRoundWithSettlement(outcome, { youBlackjack, reason }) {
-  BJ.phase = "roundOver";
+function advanceToNextHandOrDealer() {
+  // Find next not-done player hand
+  for (let i = 0; i < BJ.playerHands.length; i++) {
+    if (!BJ.handDone[i]) {
+      BJ.activeHandIndex = i;
+      syncActiveHandUI();
+      updateScoresUI();
+      setStatus(`Your turn (Player). Hand ${i + 1}.`);
+      syncActionButtons();
+      return;
+    }
+  }
 
-  updateScoresUI();
-  markOutcomeUI(outcome);
+  // All hands complete -> dealer plays, then settle
+  void (async () => {
+    BJ.uiBusy = true;
+    BJ.phase = "dealerTurn";
+    syncActionButtons();
+    setStatus("Dealer turn...");
+    await cpuPlayDealer();
 
-  // settlement
-  const { net } = settleBet({ outcome, youBlackjack });
-
-  const you = handTotals(youHand(), { includeFaceDown: true });
-  const opp = handTotals(oppHand(), { includeFaceDown: true });
-
-  const outcomeText =
-    outcome === "push" ? "Push" : (outcome === "youWin" ? "You win" : "You lose");
-
-  const netText =
-    outcome === "push" ? "0" : formatMoney(net);
-
-  setStatus(
-    `${outcomeText}. Net: ${netText}. (You ${you.total} vs Opp ${opp.total}) ${reason ? `— ${reason}` : ""}`
-  );
-
-  setButtonsEnabled({ newRound: true, hit: false, stand: false });
-  unlockBet();
+    const outcomes = computeOutcomesAfterFinalSplit();
+    endRound({ outcomes, blackjackFlags: outcomes.map(() => false), reason: "Round resolved." });
+    BJ.uiBusy = false;
+  })();
 }
+
+async function startNewRound() {
+  if (BJ.uiBusy) return;
+  if (BJ.betLocked) return;
+
+  if (BJ.currentBet <= 0) {
+    setStatus("Place a bet first (add chips), then click “New round”.");
+    return;
+  }
+
+  BJ.uiBusy = true;
+
+  lockBet();
+
+  // Reset hands + per-round state
+  BJ.dealer = [];
+  BJ.playerHands = [[]];
+  BJ.activeHandIndex = 0;
+  BJ.handDone = [false];
+  BJ.handDoubled = [false];
+
+  BJ.baseBetAmount = BJ.currentBet;
+  BJ.baseBetChips = BJ.betChips.slice();
+
+  BJ.handBets = [BJ.baseBetAmount];
+  ensurePlayerHandContainers(1);
+  clearOutcomeUI();
+
+  BJ.phase = "dealing";
+  syncActionButtons();
+
+  BJ.dealerHoleDown = BJ.controlled === "player";
+
+  setStatus(`Dealing... Bet: ${formatMoney(BJ.currentBet)}`);
+  await sleep(120);
+
+  // Deal sequence: Player0, Dealer, Player0, Dealer(hole maybe)
+  await dealToPlayer({ handIndex: 0 });
+  await sleep(80);
+
+  await dealToDealer({ faceDown: false });
+  await sleep(80);
+
+  await dealToPlayer({ handIndex: 0 });
+  await sleep(80);
+
+  await dealToDealer({ faceDown: BJ.dealerHoleDown });
+
+  // Naturals (single-hand only)
+  const p = handTotals(BJ.playerHands[0], { includeFaceDown: true });
+  const d = handTotals(BJ.dealer, { includeFaceDown: true });
+
+  if (p.blackjack || d.blackjack) {
+    revealDealerHoleIfNeeded();
+    await sleep(120);
+
+    const youCards = BJ.controlled === "player" ? BJ.playerHands[0] : BJ.dealer;
+    const oppCards = BJ.controlled === "player" ? BJ.dealer : BJ.playerHands[0];
+
+    const you = handTotals(youCards, { includeFaceDown: true });
+    const opp = handTotals(oppCards, { includeFaceDown: true });
+
+    let outcome;
+    if (you.blackjack && opp.blackjack) outcome = "push";
+    else if (you.blackjack) outcome = "youWin";
+    else outcome = "youLose";
+
+    endRound({
+      outcomes: [outcome],
+      blackjackFlags: [you.blackjack],
+      reason: "Blackjack resolution.",
+    });
+
+    BJ.uiBusy = false;
+    return;
+  }
+
+  // If controlling dealer, CPU plays player first
+  if (BJ.controlled === "dealer") {
+    setStatus("CPU Player turn...");
+    BJ.phase = "playerTurn";
+    syncActionButtons();
+    await sleep(180);
+    await cpuPlayPlayerSingle();
+
+    const pb = isBust(BJ.playerHands[0], { includeFaceDown: true });
+    if (pb) {
+      getPlayerHandEl(0)?.classList.add("bust");
+      revealDealerHoleIfNeeded();
+      endRound({ outcomes: ["youWin"], blackjackFlags: [false], reason: "Player busts." });
+      BJ.uiBusy = false;
+      return;
+    }
+
+    // Dealer (YOU) now plays
+    BJ.phase = "dealerTurn";
+    setStatus("Your turn (Dealer). Hit or Stand.");
+    syncActionButtons();
+    BJ.uiBusy = false;
+    return;
+  }
+
+  // Player (YOU) turn
+  BJ.phase = "playerTurn";
+  setStatus("Your turn (Player). Hit, Stand, Double, or Split.");
+  syncActionButtons();
+  BJ.uiBusy = false;
+}
+
+/* --------------------------
+   Player actions
+-------------------------- */
 
 async function onHit() {
   if (BJ.uiBusy) return;
   if (!(BJ.phase === "playerTurn" || BJ.phase === "dealerTurn")) return;
 
+  const seat = BJ.phase === "playerTurn" ? "player" : "dealer";
+  const youControl = BJ.controlled === seat;
+  if (!youControl) return;
+
   BJ.uiBusy = true;
 
-  const seat = (BJ.phase === "playerTurn") ? "player" : "dealer";
-  const youControl = currentControlledSeat() === seat;
-  if (!youControl) {
-    BJ.uiBusy = false;
-    return;
-  }
-
   if (seat === "player") {
-    await dealToPlayer();
-    const p = handTotals(BJ.player, { includeFaceDown: true });
+    const idx = BJ.activeHandIndex;
+    await dealToPlayer({ handIndex: idx });
+
+    const p = handTotals(BJ.playerHands[idx], { includeFaceDown: true });
     if (p.total > 21) {
-      el.playerHand.classList.add("bust");
-      revealDealerHoleIfNeeded();
-      endRoundWithSettlement("youLose", { youBlackjack: false, reason: "You busted." });
+      const hEl = getPlayerHandEl(idx);
+      hEl?.classList.add("bust");
+      BJ.handDone[idx] = true;
+
+      if (BJ.playerHands.length > 1) {
+        setStatus(`Hand ${idx + 1} busts.`);
+        await sleep(220);
+        advanceToNextHandOrDealer();
+      } else {
+        revealDealerHoleIfNeeded();
+        endRound({ outcomes: ["youLose"], blackjackFlags: [false], reason: "You busted." });
+      }
+    } else {
+      syncActionButtons();
     }
   } else {
+    // seat === dealer (you control dealer). Dealer cannot split/double in this sim.
     await dealToDealer({ faceDown: false });
+
     const d = handTotals(BJ.dealer, { includeFaceDown: true });
     if (d.total > 21) {
       el.dealerHand.classList.add("bust");
-      endRoundWithSettlement("youLose", { youBlackjack: false, reason: "You busted." });
+      endRound({ outcomes: ["youLose"], blackjackFlags: [false], reason: "You busted." });
+    } else {
+      syncActionButtons();
     }
   }
 
@@ -954,37 +1182,161 @@ async function onStand() {
   if (BJ.uiBusy) return;
   if (!(BJ.phase === "playerTurn" || BJ.phase === "dealerTurn")) return;
 
-  const seat = (BJ.phase === "playerTurn") ? "player" : "dealer";
-  const youControl = currentControlledSeat() === seat;
+  const seat = BJ.phase === "playerTurn" ? "player" : "dealer";
+  const youControl = BJ.controlled === seat;
   if (!youControl) return;
 
   BJ.uiBusy = true;
 
   if (seat === "player") {
-    // Switch to dealer CPU
+    const idx = BJ.activeHandIndex;
+    BJ.handDone[idx] = true;
+
+    if (BJ.playerHands.length > 1) {
+      advanceToNextHandOrDealer();
+      BJ.uiBusy = false;
+      return;
+    }
+
+    // Single-hand: dealer CPU plays, then settle
     BJ.phase = "dealerTurn";
-    setButtonsEnabled({ newRound: false, hit: false, stand: false });
+    syncActionButtons();
     setStatus("Dealer turn...");
     await cpuPlayDealer();
 
     const d = handTotals(BJ.dealer, { includeFaceDown: true });
     if (d.total > 21) el.dealerHand.classList.add("bust");
 
-    const { outcome, youBlackjack } = computeOutcomeAfterFinal();
-    endRoundWithSettlement(outcome, { youBlackjack, reason: "Round resolved." });
+    const { outcome, youBlackjack } = computeOutcomeAfterFinalSingle();
+    endRound({ outcomes: [outcome], blackjackFlags: [youBlackjack], reason: "Round resolved." });
 
     BJ.uiBusy = false;
     return;
   }
 
-  // seat === "dealer": resolve immediately (player already played CPU)
-  setButtonsEnabled({ newRound: false, hit: false, stand: false });
-
+  // seat === dealer: resolve immediately (player already played CPU)
   const d = handTotals(BJ.dealer, { includeFaceDown: true });
   if (d.total > 21) el.dealerHand.classList.add("bust");
 
-  const { outcome, youBlackjack } = computeOutcomeAfterFinal();
-  endRoundWithSettlement(outcome, { youBlackjack, reason: "Round resolved." });
+  const { outcome, youBlackjack } = computeOutcomeAfterFinalSingle();
+  endRound({ outcomes: [outcome], blackjackFlags: [youBlackjack], reason: "Round resolved." });
+
+  BJ.uiBusy = false;
+}
+
+async function onDoubleDown() {
+  if (BJ.uiBusy) return;
+  if (!canPlayerActNow()) return;
+
+  const idx = BJ.activeHandIndex;
+  if (!canDoubleDown(idx)) {
+    setStatus("Double is not available right now.");
+    return;
+  }
+
+  BJ.uiBusy = true;
+
+  const add = BJ.handBets[idx];
+  BJ.bankroll -= add;
+  BJ.handBets[idx] += add;
+  BJ.handDoubled[idx] = true;
+
+  syncBankrollUI();
+  syncTotalBetFromHandBets();
+
+  setStatus(`Double down. Hand ${idx + 1}: one card, then stand.`);
+  await sleep(100);
+
+  await dealToPlayer({ handIndex: idx });
+
+  const p = handTotals(BJ.playerHands[idx], { includeFaceDown: true });
+  if (p.total > 21) {
+    getPlayerHandEl(idx)?.classList.add("bust");
+  }
+
+  BJ.handDone[idx] = true;
+
+  if (BJ.playerHands.length > 1) {
+    await sleep(180);
+    advanceToNextHandOrDealer();
+  } else {
+    // proceed directly to dealer
+    BJ.phase = "dealerTurn";
+    syncActionButtons();
+    setStatus("Dealer turn...");
+    await cpuPlayDealer();
+
+    const outcomes = [computeOutcomeAfterFinalSingle().outcome];
+    endRound({ outcomes, blackjackFlags: [false], reason: "Round resolved." });
+  }
+
+  BJ.uiBusy = false;
+}
+
+async function onSplit() {
+  if (BJ.uiBusy) return;
+  if (!canSplitNow()) {
+    setStatus("Split is not available right now.");
+    return;
+  }
+
+  BJ.uiBusy = true;
+
+  const h = BJ.playerHands[0];
+  const first = h[0];
+  const second = h[1];
+
+  // Place the second bet (equal to the first hand bet)
+  const bet = BJ.handBets[0];
+  BJ.bankroll -= bet;
+
+  BJ.playerHands = [[first], [second]];
+  BJ.activeHandIndex = 0;
+  BJ.handDone = [false, false];
+  BJ.handDoubled = [false, false];
+  BJ.handBets = [bet, bet];
+
+  syncBankrollUI();
+  syncTotalBetFromHandBets();
+
+  // Move existing card elements into two hand containers (preserve deal animation fidelity)
+  const oldHandEl = getPlayerHandEl(0);
+  const oldCards = oldHandEl ? Array.from(oldHandEl.children) : [];
+  ensurePlayerHandContainers(2);
+
+  const h0El = getPlayerHandEl(0);
+  const h1El = getPlayerHandEl(1);
+
+  if (h0El && h1El && oldCards.length >= 2) {
+    h0El.appendChild(oldCards[0]);
+    h1El.appendChild(oldCards[1]);
+  }
+
+  syncActiveHandUI();
+  updateScoresUI();
+
+  setStatus("Split. Dealing one card to each hand...");
+  await sleep(140);
+
+  // Standard flow: each split hand receives one additional card before play
+  await dealToPlayer({ handIndex: 0 });
+  await sleep(80);
+  await dealToPlayer({ handIndex: 1 });
+
+  // House rule: split aces -> one card each, then stand (common)
+  if (first.rank === "A") {
+    BJ.handDone = [true, true];
+    setStatus("Split aces: one card each (house rule).");
+    await sleep(240);
+    advanceToNextHandOrDealer();
+    BJ.uiBusy = false;
+    return;
+  }
+
+  BJ.activeHandIndex = 0;
+  syncActiveHandUI();
+  setStatus("Your turn (Player). Hand 1.");
+  syncActionButtons();
 
   BJ.uiBusy = false;
 }
@@ -1002,18 +1354,36 @@ function closeRoleModal() {
 }
 
 function setControlledSeat(seat) {
-  BJ.controlled = seat; // "player" | "dealer"
+  BJ.controlled = seat;
   updateRolePills();
 
-  // reset bet UI (but keep bankroll) because "you" changed seats
+  // reset bet UI (keep bankroll) because "you" changed seats
   BJ.currentBet = 0;
   BJ.betChips = [];
   BJ.selectedChip = null;
   BJ.betLocked = false;
+
+  BJ.baseBetAmount = 0;
+  BJ.baseBetChips = [];
+
   renderBetStack();
   syncBetUI();
   syncChipTraySelection();
   syncBetHint();
+
+  // reset round state
+  BJ.phase = "idle";
+  BJ.dealer = [];
+  BJ.playerHands = [[]];
+  BJ.activeHandIndex = 0;
+  BJ.handDone = [false];
+  BJ.handBets = [0];
+  BJ.handDoubled = [false];
+  clearHandsUI();
+  ensurePlayerHandContainers(1);
+  updateScoresUI();
+
+  syncActionButtons();
 }
 
 /* --------------------------
@@ -1039,7 +1409,6 @@ function enterBlackjack() {
 function wireEvents() {
   el.btnStart.addEventListener("click", () => enterSelect());
   el.btnHome.addEventListener("click", () => showScreen("home"));
-
   el.btnReset.addEventListener("click", () => hardResetAll());
 
   el.tileBlackjack.addEventListener("click", () => enterBlackjack());
@@ -1047,6 +1416,9 @@ function wireEvents() {
   el.btnNewRound.addEventListener("click", () => startNewRound());
   el.btnHit.addEventListener("click", () => onHit());
   el.btnStand.addEventListener("click", () => onStand());
+
+  if (el.btnDouble) el.btnDouble.addEventListener("click", () => onDoubleDown());
+  if (el.btnSplit) el.btnSplit.addEventListener("click", () => onSplit());
 
   el.btnControlPlayer.addEventListener("click", () => {
     setControlledSeat("player");
@@ -1090,6 +1462,8 @@ function wireEvents() {
     if (e.key === "h" || e.key === "H") el.btnHit.click();
     if (e.key === "s" || e.key === "S") el.btnStand.click();
     if (e.key === "n" || e.key === "N") el.btnNewRound.click();
+    if (e.key === "d" || e.key === "D") el.btnDouble?.click();
+    if (e.key === "p" || e.key === "P") el.btnSplit?.click();
 
     if (!BJ.betLocked) {
       if (e.key === "Backspace") {
