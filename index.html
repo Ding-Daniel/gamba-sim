@@ -8,242 +8,165 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div id="app">
+    <div class="app">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true"></div>
+          <div class="logo">♠</div>
           <div class="brand-text">
             <div class="brand-title">Card Simulator</div>
-            <div class="brand-subtitle">Blackjack first. More games later.</div>
+            <div class="brand-subtitle">Blackjack + Betting</div>
           </div>
         </div>
 
         <div class="topbar-actions">
-          <button id="btn-home" class="btn btn-ghost" type="button" title="Home">Home</button>
-          <button id="btn-reset" class="btn btn-ghost" type="button" title="Reset">Reset</button>
+          <button id="btn-home" class="btn" type="button">Home</button>
+          <button id="btn-reset" class="btn" type="button">Reset</button>
         </div>
       </header>
 
       <main class="main">
-        <!-- HOME -->
-        <section id="screen-home" class="screen is-active" aria-label="Home">
+        <!-- HOME SCREEN -->
+        <section id="screen-home" class="screen screen-active">
           <div class="hero">
-            <h1 class="hero-title">A high-fidelity card table in your browser.</h1>
-            <p class="hero-copy">
-              Start with Blackjack. Choose whether you control the Player or the Dealer.
-              Smooth dealing, flips, bust effects, and a layout designed for future games.
+            <h1>Card Simulator</h1>
+            <p>
+              Static blackjack simulator: betting, bankroll, role switching. Choose a mode and
+              play.
             </p>
-            <div class="hero-actions">
-              <button id="btn-start" class="btn btn-primary btn-xl" type="button">Start</button>
-            </div>
-            <div class="hero-footnote">Static site. Works on GitHub Pages with no build step.</div>
+            <button id="btn-start" class="btn btn-primary" type="button">Select</button>
           </div>
         </section>
 
-        <!-- SELECT -->
-        <section id="screen-select" class="screen" aria-label="Game selection">
-          <div class="select-layout">
-            <aside class="game-rail">
-              <div class="rail-title">Games</div>
-
-              <button id="tile-blackjack" class="game-tile is-enabled" type="button">
-                <div class="tile-card" aria-hidden="true">
-                  <div class="tile-card-inner">
-                    <div class="tile-card-front">
-                      <div class="tile-corner tl">A<span>♠</span></div>
-                      <div class="tile-suit">♠</div>
-                      <div class="tile-corner br">A<span>♠</span></div>
-                    </div>
-                  </div>
-                </div>
-                <div class="tile-meta">
-                  <div class="tile-title">Blackjack</div>
-                  <div class="tile-subtitle">Control Player or Dealer</div>
-                </div>
-              </button>
-
-              <button class="game-tile is-disabled" type="button" disabled>
-                <div class="tile-card is-back" aria-hidden="true">
-                  <div class="tile-card-inner">
-                    <div class="tile-card-front">
-                      <div class="tile-suit subtle">?</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="tile-meta">
-                  <div class="tile-title">Coming soon</div>
-                  <div class="tile-subtitle">Reserved slot</div>
-                </div>
-              </button>
-            </aside>
-
-            <section class="select-stage">
-              <div class="stage-card">
-                <h2 class="stage-title">Select a game</h2>
-                <p class="stage-copy">
-                  Blackjack is available now. The right side of this layout is reserved for future
-                  games and richer modes (tutorials, rulesets, betting, multiplayer, etc.).
-                </p>
-
-                <div class="stage-placeholder">
-                  <div class="placeholder-grid">
-                    <div class="placeholder-box"></div>
-                    <div class="placeholder-box"></div>
-                    <div class="placeholder-box"></div>
-                    <div class="placeholder-box"></div>
-                  </div>
-                  <div class="placeholder-label">Future game space</div>
-                </div>
-              </div>
-            </section>
+        <!-- SELECT SCREEN -->
+        <section id="screen-select" class="screen">
+          <div class="select-grid">
+            <button id="tile-blackjack" class="tile" type="button">
+              <div class="tile-title">Blackjack</div>
+              <div class="tile-desc">Bet, deal, hit/stand. Control Player or Dealer.</div>
+            </button>
           </div>
         </section>
 
-        <!-- BLACKJACK -->
-        <section id="screen-blackjack" class="screen" aria-label="Blackjack">
+        <!-- BLACKJACK SCREEN -->
+        <section id="screen-blackjack" class="screen">
           <div class="table-wrap">
+            <div class="table-top">
+              <div class="role-pills">
+                <div class="pill" id="dealer-role-pill">
+                  Dealer
+                  <span class="pill-sub" id="dealer-role-sub">CPU</span>
+                </div>
+                <div class="pill" id="player-role-pill">
+                  Player
+                  <span class="pill-sub" id="player-role-sub">YOU</span>
+                </div>
+              </div>
+
+              <div class="table-meta">
+                <div class="meta-row">
+                  <span class="meta-label">You control:</span>
+                  <span class="meta-value" id="you-control">Player</span>
+                  <button id="btn-role" class="btn btn-small" type="button">Change</button>
+                </div>
+
+                <div class="meta-row">
+                  <span class="meta-label">Bankroll:</span>
+                  <span class="meta-value" id="bankroll">$100,000</span>
+                </div>
+
+                <div class="meta-row">
+                  <span class="meta-label">Current bet:</span>
+                  <span class="meta-value" id="bet-amount">$0</span>
+                </div>
+              </div>
+            </div>
+
             <div class="table">
-              <div class="table-felt" aria-hidden="true"></div>
+              <div class="felt">
+                <div class="deck" id="deck" aria-label="Deck"></div>
+                <div class="anim-layer" id="anim-layer" aria-hidden="true"></div>
 
-              <!-- DEALER -->
-              <section class="seat seat-dealer">
-                <div class="seat-header">
-                  <div class="seat-title">
-                    Dealer <span id="dealer-role-pill" class="pill">CPU</span>
+                <section class="seat seat-dealer">
+                  <header class="seat-header">
+                    <div class="seat-title">Dealer</div>
+                    <div class="seat-score" id="dealer-score">0</div>
+                  </header>
+                  <div class="hand" id="dealer-hand" aria-label="Dealer hand"></div>
+                </section>
+
+                <div class="bet-zone">
+                  <div class="bet-spot" id="bet-spot">
+                    <div class="bet-spot-title">Bet</div>
+                    <div class="bet-stack" id="bet-stack" aria-label="Bet stack"></div>
+                    <div class="bet-hint" id="bet-hint">Place chips to bet.</div>
                   </div>
-                  <div class="seat-score">
-                    <span class="muted">Total:</span> <span id="dealer-score">—</span>
-                  </div>
-                </div>
-                <div id="dealer-hand" class="hand" aria-label="Dealer hand"></div>
-              </section>
 
-              <!-- BET SPOT -->
-              <section class="bet-spot-wrap" aria-label="Bet spot">
-                <div class="bet-spot-header">
-                  <div class="bet-spot-title">Bet</div>
-                  <div class="bet-spot-amt">
-                    <span class="muted">Current:</span> <span id="bet-amount">$0</span>
-                  </div>
-                </div>
-
-                <div id="bet-spot" class="bet-spot" title="Place chips here">
-                  <div class="bet-spot-ring" aria-hidden="true"></div>
-                  <div id="bet-stack" class="chip-stack" aria-hidden="true"></div>
-                  <div class="bet-spot-hint" id="bet-hint">Select a chip, then click to add.</div>
-                </div>
-              </section>
-
-              <!-- DECK -->
-              <div class="deck-area" aria-hidden="true">
-                <div id="deck" class="deck" title="Deck">
-                  <div class="deck-card"></div>
-                  <div class="deck-card"></div>
-                  <div class="deck-card"></div>
-                </div>
-              </div>
-
-              <!-- PLAYER -->
-              <section class="seat seat-player">
-                <div class="seat-header">
-                  <div class="seat-title">
-                    Player <span id="player-role-pill" class="pill">YOU</span>
-                  </div>
-                  <div class="seat-score">
-                    <span class="muted">Total:</span> <span id="player-score">—</span>
-                  </div>
-                </div>
-                <div id="player-hand" class="hand" aria-label="Player hand"></div>
-              </section>
-
-              <!-- CONTROLS -->
-              <section class="controls">
-                <div class="controls-left">
-                  <button id="btn-new-round" class="btn btn-primary" type="button">New round</button>
-                  <button id="btn-hit" class="btn" type="button">Hit</button>
-                  <button id="btn-stand" class="btn" type="button">Stand</button>
-                </div>
-
-                <div class="controls-right">
-                  <div class="hud">
-                    <div class="hud-row">
-                      <div class="hud-label">Bankroll</div>
-                      <div id="bankroll" class="hud-value">$100,000</div>
-                    </div>
-                    <div class="hud-row">
-                      <div class="hud-label">You control</div>
-                      <div id="you-control" class="hud-value">Player</div>
+                  <div class="chip-tray">
+                    <div class="chip-set" id="chip-set" aria-label="Chip tray"></div>
+                    <div class="bet-actions">
+                      <button id="btn-undo-chip" class="btn btn-small" type="button">
+                        Undo chip
+                      </button>
+                      <button id="btn-clear-bet" class="btn btn-small" type="button">
+                        Clear bet
+                      </button>
                     </div>
                   </div>
-
-                  <div id="status" class="status" role="status" aria-live="polite">
-                    Select chips and place a bet. Then click “New round”.
-                  </div>
-                </div>
-              </section>
-
-              <!-- CHIP TRAY (STATIC BUTTONS SO THEY ALWAYS RENDER) -->
-              <section class="chip-tray" aria-label="Chip tray">
-                <div class="chip-tray-left">
-                  <div class="chip-tray-title">Chips</div>
-                  <div class="chip-tray-sub">Click a chip to select it, then click the bet area to add.</div>
                 </div>
 
-                <div class="chip-tray-right">
-                  <div id="chip-set" class="chip-set" aria-label="Chip set">
-                    <button class="chip" type="button" data-value="25" style="--chip-color:#5ee6b2" title="$25">
-                      <div class="chip-label">25</div>
+                <section class="seat seat-player">
+                  <header class="seat-header">
+                    <div class="seat-title">Player</div>
+                    <div class="seat-score" id="player-score">0</div>
+                  </header>
+                  <div class="hand" id="player-hand" aria-label="Player hand"></div>
+                </section>
+
+                <!-- CONTROLS -->
+                <section class="controls">
+                  <div class="controls-left">
+                    <button id="btn-new-round" class="btn btn-primary" type="button">
+                      New round
                     </button>
-                    <button class="chip" type="button" data-value="100" style="--chip-color:#5eb6ff" title="$100">
-                      <div class="chip-label">100</div>
-                    </button>
-                    <button class="chip" type="button" data-value="500" style="--chip-color:#ff77ec" title="$500">
-                      <div class="chip-label">500</div>
-                    </button>
-                    <button class="chip" type="button" data-value="1000" style="--chip-color:#ffd36b" title="$1,000">
-                      <div class="chip-label">1K</div>
-                    </button>
-                    <button class="chip" type="button" data-value="5000" style="--chip-color:#a78bfa" title="$5,000">
-                      <div class="chip-label">5K</div>
-                    </button>
-                    <button class="chip" type="button" data-value="25000" style="--chip-color:#ff5454" title="$25,000">
-                      <div class="chip-label">25K</div>
-                    </button>
+                    <button id="btn-hit" class="btn" type="button">Hit</button>
+                    <button id="btn-double" class="btn" type="button">Double</button>
+                    <button id="btn-stand" class="btn" type="button">Stand</button>
                   </div>
 
-                  <div class="chip-actions">
-                    <button id="btn-undo-chip" class="btn btn-ghost" type="button">Undo</button>
-                    <button id="btn-clear-bet" class="btn btn-ghost" type="button">Clear</button>
+                  <div class="controls-right">
+                    <div class="hud">
+                      <div class="hud-row">
+                        <div class="status" id="status">Select chips and place a bet.</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </section>
-            </div>
-          </div>
-
-          <!-- ROLE MODAL -->
-          <div id="role-modal" class="modal is-hidden" role="dialog" aria-modal="true">
-            <div class="modal-scrim" data-close="true"></div>
-            <div class="modal-card">
-              <div class="modal-title">Blackjack setup</div>
-              <div class="modal-copy">
-                Choose which seat you control. Your bankroll and bet apply to the seat you control.
-              </div>
-
-              <div class="modal-actions">
-                <button id="btn-control-player" class="btn btn-primary" type="button">Control Player</button>
-                <button id="btn-control-dealer" class="btn" type="button">Control Dealer</button>
-              </div>
-
-              <div class="modal-footnote">
-                Rules: single hand, dealer stands on soft 17. Betting: win 1:1, blackjack 3:2,
-                push returns, loss loses bet.
+                </section>
               </div>
             </div>
           </div>
-
-          <div id="anim-layer" class="anim-layer" aria-hidden="true"></div>
         </section>
       </main>
+    </div>
+
+    <!-- ROLE MODAL -->
+    <div class="modal-backdrop" id="role-modal" aria-hidden="true">
+      <div class="modal">
+        <div class="modal-title">Choose who you control</div>
+        <div class="modal-body">
+          <p>
+            If you control <strong>Player</strong>, the Dealer’s hole card is hidden until
+            needed.
+          </p>
+          <div class="modal-actions">
+            <button id="btn-control-player" class="btn btn-primary" type="button">
+              Control Player
+            </button>
+            <button id="btn-control-dealer" class="btn" type="button">
+              Control Dealer
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="./app.js"></script>
