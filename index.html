@@ -132,6 +132,23 @@
                 <div id="dealer-hand" class="hand" aria-label="Dealer hand"></div>
               </section>
 
+              <!-- TABLE CENTER: BET SPOT -->
+              <section class="bet-spot-wrap" aria-label="Bet spot">
+                <div class="bet-spot-header">
+                  <div class="bet-spot-title">Bet</div>
+                  <div class="bet-spot-amt">
+                    <span class="muted">Current:</span>
+                    <span id="bet-amount">$0</span>
+                  </div>
+                </div>
+
+                <div id="bet-spot" class="bet-spot" title="Place chips here">
+                  <div class="bet-spot-ring" aria-hidden="true"></div>
+                  <div id="bet-stack" class="chip-stack" aria-hidden="true"></div>
+                  <div class="bet-spot-hint" id="bet-hint">Select a chip, then click to add.</div>
+                </div>
+              </section>
+
               <!-- DECK -->
               <div class="deck-area" aria-hidden="true">
                 <div id="deck" class="deck" title="Deck">
@@ -167,8 +184,36 @@
                 </div>
 
                 <div class="controls-right">
+                  <div class="hud">
+                    <div class="hud-row">
+                      <div class="hud-label">Bankroll</div>
+                      <div id="bankroll" class="hud-value">$100,000</div>
+                    </div>
+                    <div class="hud-row">
+                      <div class="hud-label">You control</div>
+                      <div id="you-control" class="hud-value">Player</div>
+                    </div>
+                  </div>
+
                   <div id="status" class="status" role="status" aria-live="polite">
                     Pick “New round” to begin.
+                  </div>
+                </div>
+              </section>
+
+              <!-- CHIP TRAY -->
+              <section class="chip-tray" aria-label="Chip tray">
+                <div class="chip-tray-left">
+                  <div class="chip-tray-title">Chips</div>
+                  <div class="chip-tray-sub">Click a chip to select it, then add to bet.</div>
+                </div>
+
+                <div class="chip-tray-right">
+                  <div id="chip-set" class="chip-set" aria-label="Chip set"></div>
+
+                  <div class="chip-actions">
+                    <button id="btn-undo-chip" class="btn btn-ghost" type="button">Undo</button>
+                    <button id="btn-clear-bet" class="btn btn-ghost" type="button">Clear</button>
                   </div>
                 </div>
               </section>
@@ -181,7 +226,7 @@
             <div class="modal-card">
               <div class="modal-title">Blackjack setup</div>
               <div class="modal-copy">
-                Choose which seat you control. The other seat uses a simple CPU policy.
+                Choose which seat you control. Your bankroll and bet apply to the seat you control.
               </div>
 
               <div class="modal-actions">
@@ -194,7 +239,8 @@
               </div>
 
               <div class="modal-footnote">
-                Rules: single hand, standard values, dealer stands on soft 17. No betting yet.
+                Rules: single hand, standard values, dealer stands on soft 17. Betting: win 1:1,
+                blackjack 3:2, push returns, loss loses bet.
               </div>
             </div>
           </div>
