@@ -10,7 +10,7 @@
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 
   --card-w: clamp(72px, 7.8vw, 96px);
-  --card-h: calc(var(--card-w) * 1.42); 
+  --card-h: calc(var(--card-w) * 1.42);
   --card-r: 14px;
 
   --speed: 460ms;
