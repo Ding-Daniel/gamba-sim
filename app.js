@@ -431,6 +431,7 @@ function resetBlackjackState({ hard = false } = {}) {
   if (hard) BJ.bankroll = 100000;
 
   clearHandsUI();
+  if (el.animLayer) el.animLayer.innerHTML = "";
   ensurePlayerHandContainers(1);
   setStatus("Select chips and place a bet. Then click “New round”.");
   setButtonsEnabled({ newRound: true, hit: false, stand: false, double: false, split: false });
@@ -768,17 +769,27 @@ async function dealToDealer({ faceDown = false } = {}) {
 }
 
 function revealDealerHoleIfNeeded() {
+  // Reveals any face-down dealer cards and updates UI + scoring state.
   let revealed = false;
+
   for (let i = 0; i < BJ.dealer.length; i++) {
     const c = BJ.dealer[i];
-    if (c.faceDown) {
-      c.faceDown = false;
-      const cardEl = el.dealerHand.children[i];
-      flipCard(cardEl, false);
-      revealed = true;
-    }
+    if (!c.faceDown) continue;
+
+    c.faceDown = false;
+
+    // NOTE: dealerHand children are the rendered .card elements in order of dealing.
+    const cardEl = el.dealerHand.children[i];
+    flipCard(cardEl, false);
+
+    revealed = true;
   }
-  if (revealed) updateScoresUI();
+
+  if (revealed) {
+    // Critical: scoring/UI logic keys off BJ.dealerHoleDown, not only per-card flags.
+    BJ.dealerHoleDown = false;
+    updateScoresUI();
+  }
 }
 
 function baseBetIsIntegerMultiple() {
@@ -1032,6 +1043,10 @@ async function startNewRound() {
 
   lockBet();
 
+  // Clear the table UI every round (prevents dealer row growing indefinitely).
+  clearHandsUI();
+  if (el.animLayer) el.animLayer.innerHTML = "";
+
   // Reset hands + per-round state
   BJ.dealer = [];
   BJ.playerHands = [[]];
@@ -1156,6 +1171,7 @@ async function onHit() {
         await sleep(220);
         advanceToNextHandOrDealer();
       } else {
+        // Requirement: if player busts before stand, dealer hole card flips but does not draw.
         revealDealerHoleIfNeeded();
         endRound({ outcomes: ["youLose"], blackjackFlags: [false], reason: "You busted." });
       }
@@ -1379,6 +1395,8 @@ function setControlledSeat(seat) {
   BJ.handDone = [false];
   BJ.handBets = [0];
   BJ.handDoubled = [false];
+  BJ.dealerHoleDown = true;
+
   clearHandsUI();
   ensurePlayerHandContainers(1);
   updateScoresUI();
