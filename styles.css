@@ -193,6 +193,7 @@ html, body {
   overflow: hidden;
   box-shadow: var(--shadow);
   background: rgba(0,0,0,0.15);
+  isolation: isolate; /* keeps blend effects contained to the table */
 }
 .table-felt {
   position: absolute; inset: 0;
@@ -200,6 +201,32 @@ html, body {
     radial-gradient(900px 700px at 30% 20%, rgba(255,255,255,0.05), transparent 65%),
     radial-gradient(700px 600px at 70% 30%, rgba(255,255,255,0.04), transparent 60%),
     linear-gradient(to bottom, rgba(10, 45, 34, 0.95), rgba(8, 32, 24, 0.96));
+  pointer-events: none;
+}
+
+/* Subtle felt watermark (faint casino table print) */
+.table-felt::after {
+  content: "MADE BY DANIEL DING";
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.42em;
+  font-size: clamp(14px, 2.6vw, 26px);
+
+  /* Very subtle: visible only on close look */
+  color: rgba(255, 255, 255, 0.055);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+
+  transform: rotate(-18deg);
+  filter: blur(0.2px);
+  mix-blend-mode: overlay;
+
   pointer-events: none;
 }
 
@@ -551,3 +578,4 @@ html, body {
   .controls-right { grid-template-columns: 1fr; }
   .hand.bust { animation: none !important; }
 }
+
