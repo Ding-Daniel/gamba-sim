@@ -1,53 +1,31 @@
-/* Force a single, non-wrapping header line */
-.topbar { overflow: hidden; }
-
-.topbar-line{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  flex-wrap:nowrap;
-  min-width:0;
-  width:100%;
+.topbar {
+    /* existing styles */
 }
 
-.topbar-titleline{
-  display:flex;
-  align-items:baseline;
-  gap:10px;
-  flex:1 1 auto;
-  min-width:0;
-  white-space:nowrap;
+.topbar-line {
+    /* new styles */
 }
 
-/* If the viewport is too small, clip the sentence instead of wrapping */
-.topbar-titleline{
-  overflow:hidden;
-  text-overflow:ellipsis;
+.topbar-titleline {
+    /* new styles */
 }
 
-.title-strong{
-  font-weight:900;
-  letter-spacing:0.2px;
-  color: rgba(255,255,255,0.92);
+.title-strong {
+    /* new styles */
 }
 
-.title-muted{
-  font-size:12px;
-  color: rgba(255,255,255,0.52);
+.title-muted {
+    /* new styles */
 }
 
-.title-byline{
-  color:#ff5454;
-  font-weight:900;
-  text-decoration:underline;
-  text-underline-offset:3px;
-  text-decoration-thickness:2px;
-  text-shadow: 0 0 10px rgba(255,84,84,0.35);
+.title-byline {
+    /* new styles */
 }
 
-/* Keep icon + buttons from shrinking/wrapping */
-.brand-mark,
-.topbar-actions{
-  flex:0 0 auto;
-  white-space:nowrap;
+.brand-mark {
+    /* updated styles */
+}
+
+.topbar-actions {
+    /* updated styles */
 }
