@@ -38,11 +38,14 @@ html, body {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-#app { min-height: 100%; display: grid; grid-template-rows: auto 1fr; }
+#app {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
 
 .topbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
   border-bottom: 1px solid rgba(255,255,255,0.10);
@@ -51,9 +54,6 @@ html, body {
   position: sticky;
   top: 0;
   z-index: 20;
-}
-.topbar {
-  padding: 14px 18px;
 }
 
 .topbar-line {
@@ -92,54 +92,18 @@ html, body {
   color: rgba(255, 255, 255, 0.5);
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .brand-mark {
   width: 42px;
   height: 42px;
   border-radius: 14px;
   justify-self: center;
   flex: 0 0 auto;
-}
-
-.topbar-actions {
-  justify-self: end;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 760px) {
-  .topbar {
-    padding: 12px 14px;
-  }
-
-  .topbar-line {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .brand-mark {
-    display: none;
-  }
-
-  .topbar-titleline {
-    gap: 2px;
-  }
-
-  .title-strong {
-    font-size: 18px;
-  }
-
-  .title-muted,
-  .title-byline {
-    font-size: 12px;
-  }
-
-  .topbar-actions {
-    justify-self: start;
-  }
-}
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark {
-  width: 42px; height: 42px;
-  border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.18);
   background:
     radial-gradient(circle at 25% 30%, rgba(255,255,255,0.18), transparent 55%),
@@ -147,9 +111,25 @@ html, body {
     rgba(255,255,255,0.06);
   box-shadow: 0 16px 30px rgba(0,0,0,0.35);
 }
-.brand-title { font-weight: 900; letter-spacing: 0.2px; }
-.brand-subtitle { font-size: 12px; color: var(--muted-2); margin-top: 2px; }
-.topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+.brand-title {
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.brand-subtitle {
+  font-size: 12px;
+  color: var(--muted-2);
+  margin-top: 2px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-self: end;
+  flex-wrap: wrap;
+}
 
 .main { padding: 18px; }
 
@@ -277,7 +257,7 @@ html, body {
   overflow: hidden;
   box-shadow: var(--shadow);
   background: rgba(0,0,0,0.15);
-  isolation: isolate; /* keeps blend effects contained to the table */
+  isolation: isolate;
 }
 .table-felt {
   position: absolute; inset: 0;
@@ -288,29 +268,22 @@ html, body {
   pointer-events: none;
 }
 
-/* Subtle felt watermark (faint casino table print) */
 .table-felt::after {
   content: "MADE BY DANIEL DING";
   position: absolute;
   inset: 0;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.42em;
   font-size: clamp(14px, 2.6vw, 26px);
-
-  /* Very subtle: visible only on close look */
   color: rgba(255, 255, 255, 0.055);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
-
   transform: rotate(-18deg);
   filter: blur(0.2px);
   mix-blend-mode: overlay;
-
   pointer-events: none;
 }
 
@@ -343,7 +316,6 @@ html, body {
   border: 1px solid rgba(255,255,255,0.10);
 }
 
-/* split hands (player) */
 .hand-group {
   display: flex;
   gap: 12px;
@@ -483,6 +455,8 @@ html, body {
 .hud-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; }
 .hud-label { color: rgba(255,255,255,0.62); font-size: 12px; }
 .hud-value { font-weight: 900; letter-spacing: 0.2px; }
+.hud-value.is-negative { color: rgba(255, 150, 150, 0.95); }
+.hud-value.is-debt { color: rgba(255, 184, 184, 0.95); }
 
 /* chip tray */
 .chip-tray {
@@ -652,14 +626,58 @@ html, body {
   box-shadow: var(--shadow);
   padding: 18px;
 }
+.modal-card-warning {
+  border-color: rgba(255, 156, 156, 0.24);
+  background:
+    linear-gradient(to bottom, rgba(255, 90, 90, 0.06), rgba(10, 12, 16, 0.94)),
+    rgba(10, 12, 16, 0.92);
+}
 .modal-title { font-weight: 900; font-size: 18px; }
 .modal-copy { margin-top: 8px; color: rgba(255,255,255,0.72); line-height: 1.45; }
 .modal-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
 .modal-footnote { margin-top: 12px; color: rgba(255,255,255,0.55); font-size: 12px; line-height: 1.4; }
+.modal-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: rgba(255,255,255,0.76);
+  line-height: 1.45;
+}
+.modal-list li + li { margin-top: 8px; }
+
+@media (max-width: 760px) {
+  .topbar {
+    padding: 12px 14px;
+  }
+
+  .topbar-line {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .brand-mark {
+    display: none;
+  }
+
+  .topbar-titleline {
+    gap: 2px;
+  }
+
+  .title-strong {
+    font-size: 18px;
+  }
+
+  .title-muted,
+  .title-byline {
+    font-size: 12px;
+  }
+
+  .topbar-actions {
+    justify-self: start;
+  }
+}
 
 @media (max-width: 520px) {
   .hero { padding: 18px; }
   .controls-right { grid-template-columns: 1fr; }
   .hand.bust { animation: none !important; }
 }
-
