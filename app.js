@@ -8,6 +8,9 @@
  * - You bet on the seat you control (Player or Dealer)
  * - Bet is placed via selectable chips, shown as a stacked pile
  * - Bet locks when a round begins
+ * - Borrowing is automatic if a bet exceeds available bankroll
+ * - Each single borrow is capped at 500,000
+ * - If debt remains for every 2 completed rounds, debt compounds by 10%
  *
  * Actions:
  * - Hit / Stand (standard)
@@ -60,6 +63,7 @@ const el = {
 
   // Betting UI
   bankroll: $("#bankroll"),
+  debt: $("#debt"),
   betAmount: $("#bet-amount"),
   betSpot: $("#bet-spot"),
   betStack: $("#bet-stack"),
@@ -67,7 +71,15 @@ const el = {
   chipSet: $("#chip-set"),
   btnUndoChip: $("#btn-undo-chip"),
   btnClearBet: $("#btn-clear-bet"),
+
+  // Loan warning
+  loanWarningModal: $("#loan-warning-modal"),
+  btnLoanWarningOk: $("#btn-loan-warning-ok"),
 };
+
+const MAX_BORROW_PER_EVENT = 500000;
+const DEBT_INTEREST_RATE = 0.10;
+const DEBT_INTEREST_EVERY_ROUNDS = 2;
 
 function showScreen(name) {
   Object.values(screens).forEach((s) => s.classList.remove("is-active"));
@@ -86,6 +98,76 @@ function formatMoney(n) {
   const sign = n < 0 ? "-" : "";
   const x = Math.abs(n);
   return `${sign}$${x.toLocaleString("en-US")}`;
+}
+
+function getDebtAmount() {
+  return Math.max(0, -BJ.bankroll);
+}
+
+function getBorrowNeededForSpend(amount) {
+  const availableCash = Math.max(BJ.bankroll, 0);
+  return Math.max(0, amount - availableCash);
+}
+
+function canFundSpend(amount) {
+  if (amount <= 0) return false;
+  return getBorrowNeededForSpend(amount) <= MAX_BORROW_PER_EVENT;
+}
+
+function resetDebtTrackingIfCleared() {
+  if (getDebtAmount() <= 0) {
+    BJ.debtRoundsWhileInDebt = 0;
+  }
+}
+
+function syncBankrollUI() {
+  el.bankroll.textContent = formatMoney(BJ.bankroll);
+  el.bankroll.classList.toggle("is-negative", BJ.bankroll < 0);
+
+  const debt = getDebtAmount();
+  el.debt.textContent = formatMoney(debt);
+  el.debt.classList.toggle("is-debt", debt > 0);
+}
+
+function openLoanWarningModal() {
+  el.loanWarningModal.classList.remove("is-hidden");
+}
+
+function closeLoanWarningModal() {
+  el.loanWarningModal.classList.add("is-hidden");
+}
+
+function maybeShowLoanWarning() {
+  if (BJ.loanWarningShown) return;
+  BJ.loanWarningShown = true;
+  openLoanWarningModal();
+}
+
+function borrowMessageFragment(borrowed) {
+  if (borrowed <= 0) return "";
+  return ` Borrowed ${formatMoney(borrowed)}. Debt: ${formatMoney(getDebtAmount())}.`;
+}
+
+function borrowLimitMessage(needed) {
+  return `Cannot borrow ${formatMoney(needed)} for one action. Max per borrow is ${formatMoney(MAX_BORROW_PER_EVENT)}.`;
+}
+
+function spendWithBorrow(amount) {
+  if (amount <= 0) {
+    return { ok: false, borrowed: 0, reason: "invalid" };
+  }
+
+  const borrowed = getBorrowNeededForSpend(amount);
+  if (borrowed > MAX_BORROW_PER_EVENT) {
+    return { ok: false, borrowed, reason: "borrowLimit" };
+  }
+
+  BJ.bankroll -= amount;
+  if (borrowed > 0) {
+    maybeShowLoanWarning();
+  }
+
+  return { ok: true, borrowed, reason: null };
 }
 
 /* --------------------------
@@ -147,12 +229,12 @@ function cardBaseValue(rank) {
 -------------------------- */
 
 const CHIP_DENOMS = [
-  { value: 25, label: "25", color: "#5ee6b2" }, // mint
-  { value: 100, label: "100", color: "#5eb6ff" }, // blue
-  { value: 500, label: "500", color: "#ff77ec" }, // pink
-  { value: 1000, label: "1K", color: "#ffd36b" }, // gold
-  { value: 5000, label: "5K", color: "#a78bfa" }, // purple
-  { value: 25000, label: "25K", color: "#ff5454" }, // red
+  { value: 500, label: "500", color: "#ff77ec" },
+  { value: 1000, label: "1K", color: "#ffd36b" },
+  { value: 5000, label: "5K", color: "#a78bfa" },
+  { value: 25000, label: "25K", color: "#ff5454" },
+  { value: 50000, label: "50K", color: "#5ee6b2" },
+  { value: 100000, label: "100K", color: "#5eb6ff" },
 ];
 
 function chipColorForValue(v) {
@@ -204,9 +286,9 @@ function syncChipTraySelection() {
     const v = Number(node.dataset.value);
     node.classList.toggle("is-selected", v === BJ.selectedChip);
 
-    const canAfford = BJ.bankroll >= v;
-    node.classList.toggle("is-disabled", !canAfford || BJ.betLocked);
-    node.disabled = !canAfford || BJ.betLocked;
+    const canUseChip = canFundSpend(v);
+    node.classList.toggle("is-disabled", !canUseChip || BJ.betLocked);
+    node.disabled = !canUseChip || BJ.betLocked;
   }
 }
 
@@ -224,15 +306,22 @@ function syncBetHint() {
     return;
   }
 
+  if (!canFundSpend(BJ.selectedChip)) {
+    const need = getBorrowNeededForSpend(BJ.selectedChip);
+    el.betHint.textContent = `Borrow limit exceeded (${formatMoney(need)} needed).`;
+    return;
+  }
+
   el.betHint.textContent = `Selected ${formatMoney(BJ.selectedChip)}. Click to add.`;
 }
 
 function addChipToBet(value) {
   if (BJ.betLocked) return false;
   if (value <= 0) return false;
-  if (BJ.bankroll < value) return false;
 
-  BJ.bankroll -= value;
+  const spend = spendWithBorrow(value);
+  if (!spend.ok) return false;
+
   BJ.betChips.push(value);
   BJ.currentBet += value;
 
@@ -240,6 +329,8 @@ function addChipToBet(value) {
   syncBankrollUI();
   syncBetUI();
   syncChipTraySelection();
+
+  setStatus(`Added ${formatMoney(value)} to bet.${borrowMessageFragment(spend.borrowed)}`);
   return true;
 }
 
@@ -250,6 +341,7 @@ function undoChip() {
 
   BJ.currentBet -= last;
   BJ.bankroll += last;
+  resetDebtTrackingIfCleared();
 
   renderBetStack();
   syncBankrollUI();
@@ -264,6 +356,7 @@ function clearBet() {
   for (const v of BJ.betChips) BJ.bankroll += v;
   BJ.betChips = [];
   BJ.currentBet = 0;
+  resetDebtTrackingIfCleared();
 
   renderBetStack();
   syncBankrollUI();
@@ -297,11 +390,11 @@ function normalizeChipsForDisplay(chips) {
   const denoms = CHIP_DENOMS.map((d) => d.value).slice().sort((a, b) => a - b);
 
   const ratioToNext = new Map([
-    [25, { next: 100, ratio: 4 }],
-    [100, { next: 500, ratio: 5 }],
     [500, { next: 1000, ratio: 2 }],
     [1000, { next: 5000, ratio: 5 }],
     [5000, { next: 25000, ratio: 5 }],
+    [25000, { next: 50000, ratio: 2 }],
+    [50000, { next: 100000, ratio: 2 }],
   ]);
 
   let changed = true;
@@ -362,10 +455,6 @@ function renderBetStack() {
   }
 }
 
-function syncBankrollUI() {
-  el.bankroll.textContent = formatMoney(BJ.bankroll);
-}
-
 function syncBetUI() {
   el.betAmount.textContent = formatMoney(BJ.currentBet);
 }
@@ -400,6 +489,10 @@ const BJ = {
   selectedChip: null,
   betLocked: false,
 
+  // Debt / loans
+  debtRoundsWhileInDebt: 0,
+  loanWarningShown: false,
+
   // Betting snapshot for visual replication on split/double
   baseBetAmount: 0,
   baseBetChips: [],
@@ -427,8 +520,12 @@ function resetBlackjackState({ hard = false } = {}) {
 
   BJ.baseBetAmount = 0;
   BJ.baseBetChips = [];
+  BJ.debtRoundsWhileInDebt = 0;
 
-  if (hard) BJ.bankroll = 100000;
+  if (hard) {
+    BJ.bankroll = 100000;
+    BJ.loanWarningShown = false;
+  }
 
   clearHandsUI();
   if (el.animLayer) el.animLayer.innerHTML = "";
@@ -838,7 +935,7 @@ function canDoubleDown(handIndex) {
   if (!h || h.length !== 2) return false;
   if (BJ.handDone[handIndex]) return false;
   if (BJ.handDoubled[handIndex]) return false;
-  return BJ.bankroll >= BJ.handBets[handIndex];
+  return canFundSpend(BJ.handBets[handIndex]);
 }
 
 function canSplitNow() {
@@ -847,8 +944,8 @@ function canSplitNow() {
   const h = BJ.playerHands[0];
   if (!h || h.length !== 2) return false;
   if (h[0].rank !== h[1].rank) return false;
-  // Must afford a second bet equal to the initial hand bet.
-  return BJ.bankroll >= BJ.handBets[0];
+  // Must be able to fund a second bet equal to the initial hand bet.
+  return canFundSpend(BJ.handBets[0]);
 }
 
 function syncActionButtons() {
@@ -900,6 +997,27 @@ function computeOutcomesAfterFinalSplit() {
   });
 }
 
+function applyDebtInterestIfNeeded() {
+  const debt = getDebtAmount();
+  if (debt <= 0) {
+    BJ.debtRoundsWhileInDebt = 0;
+    return { interestApplied: 0, roundsInDebt: 0 };
+  }
+
+  BJ.debtRoundsWhileInDebt += 1;
+
+  if (BJ.debtRoundsWhileInDebt % DEBT_INTEREST_EVERY_ROUNDS !== 0) {
+    return { interestApplied: 0, roundsInDebt: BJ.debtRoundsWhileInDebt };
+  }
+
+  const interestApplied = Math.round(debt * DEBT_INTEREST_RATE);
+  if (interestApplied > 0) {
+    BJ.bankroll -= interestApplied;
+  }
+
+  return { interestApplied, roundsInDebt: BJ.debtRoundsWhileInDebt };
+}
+
 function settleRound({ outcomes, blackjackFlags }) {
   // outcomes: array per player hand if controlled=player; if controlled=dealer, outcomes length=1
   // blackjackFlags: array<boolean> same length (natural blackjack only; split hands should be false)
@@ -921,6 +1039,9 @@ function settleRound({ outcomes, blackjackFlags }) {
     }
   }
 
+  resetDebtTrackingIfCleared();
+  const { interestApplied, roundsInDebt } = applyDebtInterestIfNeeded();
+
   // reset bet for next round
   BJ.currentBet = 0;
   BJ.betChips = [];
@@ -939,7 +1060,7 @@ function settleRound({ outcomes, blackjackFlags }) {
   syncChipTraySelection();
   syncBetHint();
 
-  return { net };
+  return { net, interestApplied, roundsInDebt, debtAfterSettlement: getDebtAmount() };
 }
 
 function endRound({ outcomes, blackjackFlags, reason }) {
@@ -953,7 +1074,7 @@ function endRound({ outcomes, blackjackFlags, reason }) {
     markOutcomeSingle(outcomes[0]);
   }
 
-  const { net } = settleRound({ outcomes, blackjackFlags });
+  const { net, interestApplied, roundsInDebt, debtAfterSettlement } = settleRound({ outcomes, blackjackFlags });
 
   const outcomeText = (() => {
     if (BJ.controlled === "player" && BJ.playerHands.length > 1) {
@@ -968,7 +1089,15 @@ function endRound({ outcomes, blackjackFlags, reason }) {
     return o === "push" ? "Push" : (o === "youWin" ? "You win" : "You lose");
   })();
 
-  setStatus(`${outcomeText}. Net: ${formatMoney(net)}.${reason ? ` — ${reason}` : ""}`);
+  let debtText = "";
+  if (debtAfterSettlement > 0 && interestApplied > 0) {
+    debtText = ` Interest charged: ${formatMoney(interestApplied)}. Debt now ${formatMoney(debtAfterSettlement)}.`;
+  } else if (debtAfterSettlement > 0) {
+    const roundsUntilInterest = DEBT_INTEREST_EVERY_ROUNDS - (roundsInDebt % DEBT_INTEREST_EVERY_ROUNDS || DEBT_INTEREST_EVERY_ROUNDS);
+    debtText = ` Debt outstanding: ${formatMoney(debtAfterSettlement)}. ${roundsUntilInterest} more debt round${roundsUntilInterest === 1 ? "" : "s"} until interest.`;
+  }
+
+  setStatus(`${outcomeText}. Net: ${formatMoney(net)}.${reason ? ` — ${reason}` : ""}${debtText}`);
 
   unlockBet();
   syncActionButtons();
@@ -1253,14 +1382,20 @@ async function onDoubleDown() {
   BJ.uiBusy = true;
 
   const add = BJ.handBets[idx];
-  BJ.bankroll -= add;
+  const spend = spendWithBorrow(add);
+  if (!spend.ok) {
+    setStatus(borrowLimitMessage(spend.borrowed));
+    BJ.uiBusy = false;
+    return;
+  }
+
   BJ.handBets[idx] += add;
   BJ.handDoubled[idx] = true;
 
   syncBankrollUI();
   syncTotalBetFromHandBets();
 
-  setStatus(`Double down. Hand ${idx + 1}: one card, then stand.`);
+  setStatus(`Double down. Hand ${idx + 1}: one card, then stand.${borrowMessageFragment(spend.borrowed)}`);
   await sleep(100);
 
   await dealToPlayer({ handIndex: idx });
@@ -1304,7 +1439,12 @@ async function onSplit() {
 
   // Place the second bet (equal to the first hand bet)
   const bet = BJ.handBets[0];
-  BJ.bankroll -= bet;
+  const spend = spendWithBorrow(bet);
+  if (!spend.ok) {
+    setStatus(borrowLimitMessage(spend.borrowed));
+    BJ.uiBusy = false;
+    return;
+  }
 
   BJ.playerHands = [[first], [second]];
   BJ.activeHandIndex = 0;
@@ -1331,7 +1471,7 @@ async function onSplit() {
   syncActiveHandUI();
   updateScoresUI();
 
-  setStatus("Split. Dealing one card to each hand...");
+  setStatus(`Split. Dealing one card to each hand...${borrowMessageFragment(spend.borrowed)}`);
   await sleep(140);
 
   // Standard flow: each split hand receives one additional card before play
@@ -1373,7 +1513,7 @@ function setControlledSeat(seat) {
   BJ.controlled = seat;
   updateRolePills();
 
-  // reset bet UI (keep bankroll) because "you" changed seats
+  // reset bet UI (keep bankroll/debt) because "you" changed seats
   BJ.currentBet = 0;
   BJ.betChips = [];
   BJ.selectedChip = null;
@@ -1412,6 +1552,7 @@ function hardResetAll() {
   showScreen("home");
   resetBlackjackState({ hard: true });
   closeRoleModal();
+  closeLoanWarningModal();
 }
 
 function enterSelect() {
@@ -1421,6 +1562,7 @@ function enterSelect() {
 function enterBlackjack() {
   showScreen("blackjack");
   resetBlackjackState({ hard: true });
+  closeLoanWarningModal();
   openRoleModal();
 }
 
@@ -1450,12 +1592,24 @@ function wireEvents() {
     setStatus("Place a bet (chips), then click “New round”.");
   });
 
-  // Close modal when clicking scrim
+  if (el.btnLoanWarningOk) {
+    el.btnLoanWarningOk.addEventListener("click", () => closeLoanWarningModal());
+  }
+
+  // Close role modal when clicking scrim
   el.roleModal.addEventListener("click", (e) => {
     const t = e.target;
     if (t && t.dataset && t.dataset.close === "true") {
       closeRoleModal();
       setStatus("Place a bet (chips), then click “New round”.");
+    }
+  });
+
+  // Close loan modal when clicking scrim
+  el.loanWarningModal.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.closeLoan === "true") {
+      closeLoanWarningModal();
     }
   });
 
@@ -1467,7 +1621,10 @@ function wireEvents() {
       return;
     }
     const ok = addChipToBet(BJ.selectedChip);
-    if (!ok) setStatus("Cannot add chip (insufficient bankroll or bet locked).");
+    if (!ok) {
+      const needed = getBorrowNeededForSpend(BJ.selectedChip);
+      setStatus(borrowLimitMessage(needed));
+    }
   });
 
   el.btnUndoChip.addEventListener("click", () => undoChip());
@@ -1493,6 +1650,7 @@ function wireEvents() {
 
     if (e.key === "Escape") {
       if (!el.roleModal.classList.contains("is-hidden")) closeRoleModal();
+      if (!el.loanWarningModal.classList.contains("is-hidden")) closeLoanWarningModal();
     }
   });
 }
@@ -1504,6 +1662,7 @@ function wireEvents() {
 function init() {
   wireEvents();
   showScreen("home");
+  closeLoanWarningModal();
   resetBlackjackState({ hard: true });
 }
 
