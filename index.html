@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -13,11 +12,13 @@
       <header class="topbar">
         <div class="topbar-line">
           <div class="brand-mark" aria-hidden="true"></div>
+
           <div class="topbar-titleline">
             <span class="title-strong">Card Simulator</span>
             <span class="title-muted">Blackjack first. More games later.</span>
             <span class="title-byline">Made by Daniel Ding</span>
-          </div>      
+          </div>
+
           <div class="topbar-actions">
             <button id="btn-home" class="btn btn-ghost" type="button" title="Home">Home</button>
             <button id="btn-reset" class="btn btn-ghost" type="button" title="Reset">Reset</button>
@@ -174,6 +175,10 @@
                       <div id="bankroll" class="hud-value">$100,000</div>
                     </div>
                     <div class="hud-row">
+                      <div class="hud-label">Debt</div>
+                      <div id="debt" class="hud-value">$0</div>
+                    </div>
+                    <div class="hud-row">
                       <div class="hud-label">You control</div>
                       <div id="you-control" class="hud-value">Player</div>
                     </div>
@@ -194,12 +199,6 @@
 
                 <div class="chip-tray-right">
                   <div id="chip-set" class="chip-set" aria-label="Chip set">
-                    <button class="chip" type="button" data-value="25" style="--chip-color:#5ee6b2" title="$25">
-                      <div class="chip-label">25</div>
-                    </button>
-                    <button class="chip" type="button" data-value="100" style="--chip-color:#5eb6ff" title="$100">
-                      <div class="chip-label">100</div>
-                    </button>
                     <button class="chip" type="button" data-value="500" style="--chip-color:#ff77ec" title="$500">
                       <div class="chip-label">500</div>
                     </button>
@@ -211,6 +210,12 @@
                     </button>
                     <button class="chip" type="button" data-value="25000" style="--chip-color:#ff5454" title="$25,000">
                       <div class="chip-label">25K</div>
+                    </button>
+                    <button class="chip" type="button" data-value="50000" style="--chip-color:#5ee6b2" title="$50,000">
+                      <div class="chip-label">50K</div>
+                    </button>
+                    <button class="chip" type="button" data-value="100000" style="--chip-color:#5eb6ff" title="$100,000">
+                      <div class="chip-label">100K</div>
                     </button>
                   </div>
 
@@ -224,10 +229,10 @@
           </div>
 
           <!-- ROLE MODAL -->
-          <div id="role-modal" class="modal is-hidden" role="dialog" aria-modal="true">
+          <div id="role-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
             <div class="modal-scrim" data-close="true"></div>
             <div class="modal-card">
-              <div class="modal-title">Blackjack setup</div>
+              <div id="role-modal-title" class="modal-title">Blackjack setup</div>
               <div class="modal-copy">
                 Choose which seat you control. Your bankroll and bet apply to the seat you control.
               </div>
@@ -240,6 +245,28 @@
               <div class="modal-footnote">
                 Rules: dealer stands on soft 17. Actions: hit/stand, double (one card then stand), split (same-rank pair; one split).
                 Betting: win 1:1, blackjack 3:2, push returns, loss loses bet.
+              </div>
+            </div>
+          </div>
+
+          <!-- LOAN WARNING MODAL -->
+          <div id="loan-warning-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="loan-warning-title">
+            <div class="modal-scrim" data-close-loan="true"></div>
+            <div class="modal-card modal-card-warning">
+              <div id="loan-warning-title" class="modal-title">Borrowing warning</div>
+              <div class="modal-copy">
+                You borrowed money to cover a bet. Borrowing is automatic once your bet goes past your available bankroll.
+              </div>
+
+              <ul class="modal-list">
+                <li>Each single borrow is capped at <strong>$500,000</strong>.</li>
+                <li>If you still have debt after every 2 completed rounds, the debt compounds by <strong>10%</strong>.</li>
+                <li>Winnings automatically reduce debt.</li>
+                <li>Reset clears everything and restores the bankroll to <strong>$100,000</strong>.</li>
+              </ul>
+
+              <div class="modal-actions">
+                <button id="btn-loan-warning-ok" class="btn btn-primary" type="button">Understood</button>
               </div>
             </div>
           </div>
